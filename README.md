@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EduPulse
+
+EduPulse is a production-oriented multi-tenant education SaaS MVP for
+schools, academies, coaching centers, and online classes. It includes public
+marketing pages, Firebase Auth, Supabase schema/migrations/RLS, role-specific
+dashboards, AI endpoints, gamification, analytics, messaging, attendance,
+assignments, notes, and admin security controls.
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies and run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Dashboards are available after Firebase login once the Supabase schema is
+installed and the user has an active organization membership:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `/student`
+- `/teacher`
+- `/admin`
 
-## Learn More
+## Verification
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Supabase
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Supabase is initialized in `supabase/` with a real CLI migration and seed file.
+For the hosted project, run these files in the Supabase dashboard SQL editor:
 
-## Deploy on Vercel
+1. `supabase/migrations/20260518143431_lumina_learn_initial_schema.sql`
+2. `supabase/seed.sql`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The local `.env.local` can enable `EDUPULSE_ENABLE_FIRST_USER_BOOTSTRAP=true`.
+After the schema exists, the first verified Firebase user can create the initial
+EduPulse organization and receive startup memberships. Turn this off in production
+after the first institute owner is created.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Docker Desktop is required to run the local stack:
+
+```bash
+npm run supabase:start
+npm run supabase:reset
+npm run supabase:types
+```
+
+## Security
+
+Read `SECURITY.md` before production deployment. The app uses signed HTTP-only
+sessions, Next.js proxy route gates, Firebase token verification, Supabase RLS,
+tenant-scoped storage paths, and AI audit logs.
+
+## Deployment
+
+The intended deployment target is Vercel.
+"# edupluse" 
