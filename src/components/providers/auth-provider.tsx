@@ -1,0 +1,511 @@
+"use client";
+
+import {
+  createContext,
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  updateProfile,
+} from "firebase/auth";
+import { toast } from "sonner";
+import {
+  getFirebaseAuth,
+  getGoogleProvider,
+  isFirebaseConfigured,
+} from "@/lib/firebase/client";
+import { isDemoModeEnabled } from "@/lib/config";
+import { demoOrg, demoUsers } from "@/lib/mock-data";
+import type { AuthSessionResult, AuthUser, Role } from "@/lib/types";
+
+type AuthContextValue = {
+  user: AuthUser | null;
+  loading: boolean;
+  configured: boolean;
+  loginWithEmail: (
+    email: string,
+    password: string,
+  ) => Promise<AuthSessionResult>;
+  signUpWithEmail: (
+    email: string,
+    password: string,
+    displayName: string,
+  ) => Promise<AuthSessionResult>;
+  loginWithGoogle: () => Promise<AuthSessionResult>;
+  loginWithDemo: (role: Role) => Promise<AuthSessionResult>;
+  resetPassword: (email: string) => Promise<void>;
+  logout: () => Promise<void>;
+  setRole: (role: Role) => Promise<void>;
+  token: () => Promise<string | null>;
+};
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+const storageKey = "lumina.demo.session";
+const localAdminStorageKey = "edupulse.admin.session";
+const localAdminEmailStorageKey = "edupulse.admin.email";
+
+function userFromLocalAdmin(email?: string | null): AuthUser {
+  return {
+    uid: "local-admin",
+    email: email ?? "admin",
+    displayName: "EduPulse Admin",
+    emailVerified: true,
+    role: "admin",
+    orgId: "11111111-1111-4111-8111-111111111111",
+    orgName: "EduPulse Academy Network",
+    deviceSessionId: createDeviceSessionId(),
+    onboardingCompleted: true,
+  };
+}
+
+function createDeviceSessionId() {
+  if (typeof window === "undefined") return "server-session";
+  const existing = window.localStorage.getItem("lumina.device.session");
+  if (existing) return existing;
+
+  const id = crypto.randomUUID();
+  window.localStorage.setItem("lumina.device.session", id);
+  return id;
+}
+
+function userFromDemoRole(role: Role): AuthUser {
+  const demo = demoUsers[role];
+
+  return {
+    uid: demo.uid,
+    email: demo.email,
+    displayName: demo.displayName,
+    emailVerified: true,
+    role,
+    orgId: demoOrg.id,
+    orgName: demoOrg.name,
+    deviceSessionId: createDeviceSessionId(),
+    onboardingCompleted: false,
+  };
+}
+
+function persistDemoRole(role: Role) {
+  window.localStorage.setItem(storageKey, role);
+}
+
+function applyLocalRole(
+  setUser: Dispatch<SetStateAction<AuthUser | null>>,
+  role: Role,
+) {
+  window.localStorage.setItem("lumina.active.role", role);
+  setUser((current) =>
+    current
+      ? {
+          ...current,
+          role,
+        }
+      : userFromDemoRole(role),
+  );
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const configured = isFirebaseConfigured();
+  const demoMode = isDemoModeEnabled();
+
+  const createServerSession = useCallback(
+    async (
+      role?: Role,
+      idToken?: string | null,
+      details?: {
+        displayName?: string | null;
+        email?: string | null;
+        orgId?: string;
+        orgName?: string;
+        allowSelfSignup?: boolean;
+      },
+    ) => {
+      const fallbackUser = userFromDemoRole(role ?? "student");
+      const response = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          idToken,
+          role,
+          displayName: details?.displayName ?? fallbackUser.displayName,
+          email: details?.email ?? fallbackUser.email,
+          orgId: details?.orgId ?? fallbackUser.orgId,
+          orgName: details?.orgName ?? fallbackUser.orgName,
+          allowSelfSignup: details?.allowSelfSignup ?? false,
+          deviceSessionId: createDeviceSessionId(),
+        }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(data?.error ?? "Unable to create secure app session.");
+      }
+
+      return (await response.json()) as {
+        role: Role;
+        orgId: string;
+        orgName: string;
+        onboardingCompleted: boolean;
+      };
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const demoRole = window.localStorage.getItem(storageKey) as Role | null;
+    if (demoRole && demoUsers[demoRole]) {
+      queueMicrotask(() => setUser(userFromDemoRole(demoRole)));
+    }
+
+    if (window.localStorage.getItem(localAdminStorageKey) === "true") {
+      queueMicrotask(() =>
+        setUser(
+          userFromLocalAdmin(
+            window.localStorage.getItem(localAdminEmailStorageKey),
+          ),
+        ),
+      );
+    }
+
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      queueMicrotask(() => setLoading(false));
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (!firebaseUser) {
+        setLoading(false);
+        return;
+      }
+
+      const role =
+        (window.localStorage.getItem("lumina.active.role") as Role | null) ??
+        "student";
+
+      setUser({
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        displayName:
+          firebaseUser.displayName ??
+          firebaseUser.email?.split("@")[0] ??
+          "EduPulse user",
+        photoURL: firebaseUser.photoURL,
+        emailVerified: firebaseUser.emailVerified,
+        role,
+        orgId: demoOrg.id,
+        orgName: demoOrg.name,
+        deviceSessionId: createDeviceSessionId(),
+        onboardingCompleted: false,
+      });
+      setLoading(false);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const setRole = useCallback(
+    async (role: Role) => {
+      if (user?.uid === "local-admin") {
+        if (role !== "admin") {
+          throw new Error("This admin account only has admin access.");
+        }
+
+        applyLocalRole(setUser, "admin");
+        return;
+      }
+
+      const auth = getFirebaseAuth();
+      const firebaseUser = auth?.currentUser;
+
+      await createServerSession(role, await firebaseUser?.getIdToken(false), {
+        displayName:
+          firebaseUser?.displayName ??
+          firebaseUser?.email?.split("@")[0] ??
+          undefined,
+        email: firebaseUser?.email ?? undefined,
+      });
+      applyLocalRole(setUser, role);
+    },
+    [createServerSession, user?.uid],
+  );
+
+  const loginWithDemo = useCallback(
+    async (role: Role) => {
+      if (!demoMode) {
+        throw new Error("Demo mode is disabled.");
+      }
+
+      await createServerSession(role, null);
+      persistDemoRole(role);
+      setUser(userFromDemoRole(role));
+      toast.success("Demo workspace opened", {
+        description: `Signed in as ${role.replace("_", " ")}.`,
+      });
+      return {
+        role,
+        orgId: demoOrg.id,
+        orgName: demoOrg.name,
+        onboardingCompleted: false,
+      };
+    },
+    [createServerSession, demoMode],
+  );
+
+  const loginWithEmail = useCallback(
+    async (email: string, password: string) => {
+      const adminResponse = await fetch("/api/auth/admin-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          deviceSessionId: createDeviceSessionId(),
+        }),
+      });
+
+      if (adminResponse.ok) {
+        window.localStorage.setItem(localAdminStorageKey, "true");
+        window.localStorage.setItem(localAdminEmailStorageKey, email);
+        window.localStorage.setItem("lumina.active.role", "admin");
+        setUser(userFromLocalAdmin(email));
+        toast.success("Signed in");
+        return {
+          role: "admin" as const,
+          orgId: "11111111-1111-4111-8111-111111111111",
+          orgName: "EduPulse Academy Network",
+          onboardingCompleted: true,
+        };
+      }
+
+      if (adminResponse.status === 429) {
+        const data = (await adminResponse.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(data?.error ?? "Too many attempts. Try again later.");
+      }
+
+      const auth = getFirebaseAuth();
+      if (!auth && demoMode) {
+        return loginWithDemo("student");
+      }
+      if (!auth) throw new Error("Sign-in is not configured.");
+
+      const credential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password,
+      );
+      const session = await createServerSession(
+        undefined,
+        await credential.user.getIdToken(false),
+        {
+          displayName:
+            credential.user.displayName ??
+            credential.user.email?.split("@")[0] ??
+            "EduPulse user",
+          email: credential.user.email,
+          allowSelfSignup: true,
+        },
+      );
+      window.localStorage.setItem("lumina.active.role", session.role);
+      setUser({
+        uid: credential.user.uid,
+        email: credential.user.email,
+        displayName:
+          credential.user.displayName ??
+          credential.user.email?.split("@")[0] ??
+          "EduPulse user",
+        photoURL: credential.user.photoURL,
+        emailVerified: credential.user.emailVerified,
+        role: session.role,
+        orgId: session.orgId,
+        orgName: session.orgName,
+        deviceSessionId: createDeviceSessionId(),
+        onboardingCompleted: session.onboardingCompleted,
+      });
+      toast.success("Signed in");
+      return session;
+    },
+    [createServerSession, demoMode, loginWithDemo],
+  );
+
+  const signUpWithEmail = useCallback(
+    async (email: string, password: string, displayName: string) => {
+      const auth = getFirebaseAuth();
+      if (!auth && demoMode) {
+        return loginWithDemo("student");
+      }
+      if (!auth) throw new Error("Sign-in is not configured.");
+
+      const credential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password,
+      );
+      await updateProfile(credential.user, { displayName });
+      await sendEmailVerification(credential.user);
+      const session = await createServerSession(
+        undefined,
+        await credential.user.getIdToken(true),
+        {
+          displayName,
+          email: credential.user.email,
+          allowSelfSignup: true,
+        },
+      );
+      window.localStorage.setItem("lumina.active.role", session.role);
+      setUser({
+        uid: credential.user.uid,
+        email: credential.user.email,
+        displayName,
+        photoURL: credential.user.photoURL,
+        emailVerified: credential.user.emailVerified,
+        role: session.role,
+        orgId: session.orgId,
+        orgName: session.orgName,
+        deviceSessionId: createDeviceSessionId(),
+        onboardingCompleted: session.onboardingCompleted,
+      });
+      toast.success("Account created", {
+        description: "Verification email sent.",
+      });
+      return {
+        ...session,
+        onboardingCompleted: false,
+      };
+    },
+    [createServerSession, demoMode, loginWithDemo],
+  );
+
+  const loginWithGoogle = useCallback(async () => {
+    const auth = getFirebaseAuth();
+    if (!auth && demoMode) {
+      return loginWithDemo("student");
+    }
+    if (!auth) throw new Error("Sign-in is not configured.");
+
+    const credential = await signInWithPopup(auth, getGoogleProvider());
+    const session = await createServerSession(
+      undefined,
+      await credential.user.getIdToken(false),
+      {
+        displayName:
+          credential.user.displayName ??
+          credential.user.email?.split("@")[0] ??
+          "EduPulse user",
+        email: credential.user.email,
+        allowSelfSignup: true,
+      },
+    );
+    window.localStorage.setItem("lumina.active.role", session.role);
+    setUser({
+      uid: credential.user.uid,
+      email: credential.user.email,
+      displayName:
+        credential.user.displayName ??
+        credential.user.email?.split("@")[0] ??
+        "EduPulse user",
+      photoURL: credential.user.photoURL,
+      emailVerified: credential.user.emailVerified,
+      role: session.role,
+      orgId: session.orgId,
+      orgName: session.orgName,
+      deviceSessionId: createDeviceSessionId(),
+      onboardingCompleted: session.onboardingCompleted,
+    });
+    toast.success("Signed in with Google");
+    return session;
+  }, [createServerSession, demoMode, loginWithDemo]);
+
+  const resetPassword = useCallback(async (email: string) => {
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      toast.info("Password reset unavailable", {
+        description: "Password reset email is not configured yet.",
+      });
+      return;
+    }
+
+    await sendPasswordResetEmail(auth, email);
+    toast.success("Password reset email sent");
+  }, []);
+
+  const logout = useCallback(async () => {
+    window.localStorage.removeItem(storageKey);
+    window.localStorage.removeItem(localAdminStorageKey);
+    window.localStorage.removeItem(localAdminEmailStorageKey);
+    setUser(null);
+    await fetch("/api/auth/session", { method: "DELETE" });
+
+    const auth = getFirebaseAuth();
+    if (auth?.currentUser) {
+      await signOut(auth);
+    }
+  }, []);
+
+  const token = useCallback(async () => {
+    const auth = getFirebaseAuth();
+    return (await auth?.currentUser?.getIdToken(false)) ?? null;
+  }, []);
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      loading,
+      configured,
+      loginWithEmail,
+      signUpWithEmail,
+      loginWithGoogle,
+      loginWithDemo,
+      resetPassword,
+      logout,
+      setRole,
+      token,
+    }),
+    [
+      configured,
+      loading,
+      loginWithDemo,
+      loginWithEmail,
+      loginWithGoogle,
+      logout,
+      resetPassword,
+      setRole,
+      signUpWithEmail,
+      token,
+      user,
+    ],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within AuthProvider");
+  }
+
+  return context;
+}

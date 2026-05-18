@@ -1,0 +1,23 @@
+<svg width="192" height="192" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">EduPulse logo</title>
+  <desc id="desc">A rounded square education mark with a pulse line and book-inspired shape.</desc>
+  <defs>
+    <linearGradient id="mark-bg" x1="24" y1="20" x2="168" y2="174" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#071826"/>
+      <stop offset="1" stop-color="#102233"/>
+    </linearGradient>
+    <linearGradient id="pulse" x1="40" y1="82" x2="158" y2="122" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#36E0CB"/>
+      <stop offset=".52" stop-color="#62B7FF"/>
+      <stop offset="1" stop-color="#FFCF70"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="0" y="0" width="192" height="192" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#06131F" flood-opacity=".28"/>
+    </filter>
+  </defs>
+  <rect x="16" y="16" width="160" height="160" rx="44" fill="url(#mark-bg)" filter="url(#soft-shadow)"/>
+  <path d="M54 58H111C124.807 58 136 69.1929 136 83V134H79C65.1929 134 54 122.807 54 109V58Z" stroke="#DDFCF8" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M81 58V134" stroke="#DDFCF8" stroke-width="10" stroke-linecap="round"/>
+  <path d="M42 103H68L80 78L99 124L113 95H150" stroke="url(#pulse)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="150" cy="95" r="9" fill="#FFCF70"/>
+</svg>

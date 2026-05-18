@@ -62,4 +62,4 @@ tenant-scoped storage paths, and AI audit logs.
 ## Deployment
 
 The intended deployment target is Vercel.
-"# edupluse" 
+"# edupluse"
