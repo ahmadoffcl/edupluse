@@ -1,5 +1,4 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -12,13 +11,13 @@ export function FeaturePage({
   eyebrow,
   title,
   description,
-  action = "Create",
+  action,
   items,
 }: {
   eyebrow: string;
   title: string;
   description: string;
-  action?: string;
+  action?: React.ReactNode;
   items: Array<{
     title: string;
     meta: string;
@@ -36,7 +35,7 @@ export function FeaturePage({
           </h1>
           <p className="mt-3 max-w-2xl text-muted-foreground">{description}</p>
         </div>
-        <Button variant="premium">{action}</Button>
+        {typeof action === "string" ? null : action}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

@@ -28,6 +28,16 @@ type MembershipResolution = {
   orgName: string;
   profileId: string | null;
   onboardingCompleted: boolean;
+  setupPending?: boolean;
+};
+type ProfileLookup = {
+  id: string;
+  onboardingCompleted: boolean;
+};
+type MembershipRow = {
+  org_id: string;
+  role: Role | string;
+  organizations?: { name?: string | null } | Array<{ name?: string | null }>;
 };
 
 const schema = z.object({
@@ -54,8 +64,107 @@ function isMissingSchemaError(error: unknown) {
   );
 }
 
-function schemaInstallError() {
-  return new Error("Workspace setup is not complete yet.");
+function isMissingProfileColumn(error: unknown, column: string) {
+  if (!error || typeof error !== "object") return false;
+
+  const candidate = error as { code?: string; message?: string };
+
+  return (
+    candidate.code === "42703" ||
+    candidate.code === "PGRST204" ||
+    Boolean(
+      candidate.message?.includes(column) &&
+      (candidate.message.includes("schema cache") ||
+        candidate.message.includes("does not exist")),
+    )
+  );
+}
+
+async function selectProfileByUid(
+  supabase: SupabaseServiceClient,
+  uid: string,
+): Promise<{ profile: ProfileLookup | null; error: unknown | null }> {
+  const result = await supabase
+    .from("profiles")
+    .select("id,onboarding_completed_at")
+    .eq("firebase_uid", uid)
+    .maybeSingle();
+
+  if (!result.error) {
+    return {
+      profile: result.data
+        ? {
+            id: result.data.id as string,
+            onboardingCompleted: Boolean(result.data.onboarding_completed_at),
+          }
+        : null,
+      error: null,
+    };
+  }
+
+  if (!isMissingProfileColumn(result.error, "onboarding_completed_at")) {
+    return { profile: null, error: result.error };
+  }
+
+  const fallback = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("firebase_uid", uid)
+    .maybeSingle();
+
+  if (fallback.error) {
+    return { profile: null, error: fallback.error };
+  }
+
+  return {
+    profile: fallback.data
+      ? {
+          id: fallback.data.id as string,
+          onboardingCompleted: true,
+        }
+      : null,
+    error: null,
+  };
+}
+
+async function upsertBasicProfile({
+  supabase,
+  uid,
+  email,
+  displayName,
+}: {
+  supabase: SupabaseServiceClient;
+  uid: string;
+  email: string | null;
+  displayName: string;
+}) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .upsert(
+      {
+        firebase_uid: uid,
+        email,
+        display_name: displayName,
+      },
+      { onConflict: "firebase_uid" },
+    )
+    .select("id")
+    .single();
+
+  if (error) throw error;
+
+  return data.id as string;
+}
+
+function provisionalMembership(requestedRole?: Role): MembershipResolution {
+  return {
+    role: requestedRole ?? "student",
+    orgId: bootstrapOrg.id,
+    orgName: bootstrapOrg.name,
+    profileId: null,
+    onboardingCompleted: false,
+    setupPending: true,
+  };
 }
 
 function firstUserBootstrapEnabled() {
@@ -66,11 +175,11 @@ function firstUserBootstrapEnabled() {
 }
 
 function selfSignupEnabled() {
-  return process.env.EDUPULSE_ALLOW_SELF_SIGNUP === "true";
+  return process.env.EDUPULSE_ALLOW_SELF_SIGNUP !== "false";
 }
 
 async function ensureOrganization(supabase: SupabaseServiceClient) {
-  const { error } = await supabase.from("organizations").upsert(
+  let result = await supabase.from("organizations").upsert(
     {
       id: bootstrapOrg.id,
       name: bootstrapOrg.name,
@@ -81,7 +190,22 @@ async function ensureOrganization(supabase: SupabaseServiceClient) {
     { onConflict: "id" },
   );
 
-  if (error) throw error;
+  if (
+    result.error &&
+    (isMissingProfileColumn(result.error, "tenant_type") ||
+      isMissingProfileColumn(result.error, "status") ||
+      isMissingProfileColumn(result.error, "slug"))
+  ) {
+    result = await supabase.from("organizations").upsert(
+      {
+        id: bootstrapOrg.id,
+        name: bootstrapOrg.name,
+      },
+      { onConflict: "id" },
+    );
+  }
+
+  if (result.error) throw result.error;
 }
 
 async function ensureStudentMembership({
@@ -97,25 +221,17 @@ async function ensureStudentMembership({
 }): Promise<MembershipResolution> {
   await ensureOrganization(supabase);
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .upsert(
-      {
-        firebase_uid: uid,
-        email,
-        display_name: displayName,
-      },
-      { onConflict: "firebase_uid" },
-    )
-    .select("id,onboarding_completed_at")
-    .single();
-
-  if (profileError) throw profileError;
+  const profileId = await upsertBasicProfile({
+    supabase,
+    uid,
+    email,
+    displayName,
+  });
 
   const { error: membershipError } = await supabase.from("memberships").upsert(
     {
       org_id: bootstrapOrg.id,
-      profile_id: profile.id,
+      profile_id: profileId,
       role: "student",
       status: "active",
     },
@@ -128,9 +244,23 @@ async function ensureStudentMembership({
     role: "student" as Role,
     orgId: bootstrapOrg.id,
     orgName: bootstrapOrg.name,
-    profileId: profile.id as string,
-    onboardingCompleted: Boolean(profile.onboarding_completed_at),
+    profileId,
+    onboardingCompleted: false,
   };
+}
+
+async function tryEnsureStudentMembership(
+  input: Parameters<typeof ensureStudentMembership>[0],
+): Promise<MembershipResolution> {
+  try {
+    return await ensureStudentMembership(input);
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      return provisionalMembership("student");
+    }
+
+    throw error;
+  }
 }
 
 async function maybeBootstrapFirstUser({
@@ -153,7 +283,9 @@ async function maybeBootstrapFirstUser({
     .select("id", { count: "exact", head: true });
 
   if (countError) {
-    if (isMissingSchemaError(countError)) throw schemaInstallError();
+    if (isMissingSchemaError(countError)) {
+      return provisionalMembership(requestedRole);
+    }
     throw countError;
   }
 
@@ -161,25 +293,17 @@ async function maybeBootstrapFirstUser({
 
   await ensureOrganization(supabase);
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .upsert(
-      {
-        firebase_uid: uid,
-        email,
-        display_name: displayName,
-      },
-      { onConflict: "firebase_uid" },
-    )
-    .select("id,onboarding_completed_at")
-    .single();
-
-  if (profileError) throw profileError;
+  const profileId = await upsertBasicProfile({
+    supabase,
+    uid,
+    email,
+    displayName,
+  });
 
   const { error: membershipError } = await supabase.from("memberships").upsert(
     bootstrapRoles.map((role) => ({
       org_id: bootstrapOrg.id,
-      profile_id: profile.id,
+      profile_id: profileId,
       role,
       status: "active",
     })),
@@ -192,8 +316,8 @@ async function maybeBootstrapFirstUser({
     role: requestedRole ?? "admin",
     orgId: bootstrapOrg.id,
     orgName: bootstrapOrg.name,
-    profileId: profile.id as string,
-    onboardingCompleted: Boolean(profile.onboarding_completed_at),
+    profileId,
+    onboardingCompleted: true,
   };
 }
 
@@ -213,33 +337,28 @@ async function resolveMembership({
   const supabase = getSupabaseServiceClient();
 
   if (!supabase) {
-    if (isDemoModeEnabled()) {
-      return {
-        role: requestedRole ?? "student",
-        orgId: demoOrg.id,
-        orgName: demoOrg.name,
-        profileId: null,
-        onboardingCompleted: false,
-      };
+    if (allowSelfSignup || isDemoModeEnabled()) {
+      return provisionalMembership(requestedRole);
     }
 
     throw new Error("Workspace access is not configured.");
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id,onboarding_completed_at")
-    .eq("firebase_uid", uid)
-    .maybeSingle();
+  const { profile, error: profileError } = await selectProfileByUid(
+    supabase,
+    uid,
+  );
 
   if (profileError) {
-    if (isMissingSchemaError(profileError)) throw schemaInstallError();
+    if (isMissingSchemaError(profileError) && allowSelfSignup) {
+      return provisionalMembership(requestedRole);
+    }
     throw profileError;
   }
 
   if (!profile) {
     if (allowSelfSignup && selfSignupEnabled() && !requestedRole) {
-      return ensureStudentMembership({
+      return tryEnsureStudentMembership({
         supabase,
         uid,
         email,
@@ -262,32 +381,67 @@ async function resolveMembership({
     );
   }
 
-  const membershipQuery = supabase
-    .from("memberships")
-    .select("org_id, role, status, organizations(name)")
-    .eq("profile_id", profile.id)
-    .eq("status", "active");
+  const membershipQuery = (select: string) => {
+    const query = supabase
+      .from("memberships")
+      .select(select)
+      .eq("profile_id", profile.id)
+      .eq("status", "active");
 
-  const membershipResult = requestedRole
-    ? await membershipQuery.eq("role", requestedRole).maybeSingle()
-    : await membershipQuery;
+    return requestedRole
+      ? query.eq("role", requestedRole).maybeSingle()
+      : query;
+  };
+
+  let membershipResult = await membershipQuery(
+    "org_id, role, status, organizations(name)",
+  );
+
+  if (membershipResult.error) {
+    const message = membershipResult.error.message ?? "";
+    if (
+      message.includes("relationship") ||
+      message.includes("organizations") ||
+      isMissingProfileColumn(membershipResult.error, "organizations")
+    ) {
+      membershipResult = await membershipQuery("org_id, role, status");
+    }
+  }
+
   const membershipError = membershipResult.error;
-  const membership = Array.isArray(membershipResult.data)
-    ? membershipResult.data.sort(
+  const membershipRows = Array.isArray(membershipResult.data)
+    ? (membershipResult.data as unknown as MembershipRow[])
+    : membershipResult.data
+      ? ([membershipResult.data] as unknown as MembershipRow[])
+      : [];
+  const membership = membershipRows.length
+    ? membershipRows.sort(
         (a, b) =>
           bootstrapRoles.indexOf(b.role as Role) -
           bootstrapRoles.indexOf(a.role as Role),
       )[0]
-    : membershipResult.data;
+    : null;
 
   if (membershipError) {
-    if (isMissingSchemaError(membershipError)) throw schemaInstallError();
+    if (isMissingSchemaError(membershipError) && allowSelfSignup) {
+      return provisionalMembership(requestedRole);
+    }
+
+    if (allowSelfSignup && selfSignupEnabled() && !requestedRole) {
+      return tryEnsureStudentMembership({
+        supabase,
+        uid,
+        email,
+        displayName,
+      });
+    }
+
     throw membershipError;
   }
 
   if (!membership) {
     if (allowSelfSignup && selfSignupEnabled() && !requestedRole) {
-      return ensureStudentMembership({
+      return tryEnsureStudentMembership({
         supabase,
         uid,
         email,
@@ -317,7 +471,7 @@ async function resolveMembership({
     orgId: membership.org_id as string,
     orgName: organization?.name ?? demoOrg.name,
     profileId: profile.id as string,
-    onboardingCompleted: Boolean(profile.onboarding_completed_at),
+    onboardingCompleted: profile.onboardingCompleted,
   };
 }
 
@@ -334,7 +488,7 @@ async function recordDeviceSession({
 }) {
   if (!supabase || !membership.profileId) return;
 
-  await supabase.from("device_sessions").upsert(
+  const { error } = await supabase.from("device_sessions").upsert(
     {
       org_id: membership.orgId,
       profile_id: membership.profileId,
@@ -345,6 +499,10 @@ async function recordDeviceSession({
     },
     { onConflict: "profile_id,device_id" },
   );
+
+  if (error) {
+    console.warn("Device session skipped", error.code);
+  }
 }
 
 export async function POST(request: Request) {
@@ -376,6 +534,11 @@ export async function POST(request: Request) {
       membership,
       deviceSessionId: body.deviceSessionId,
       request,
+    }).catch((error) => {
+      console.warn(
+        "Device session write skipped",
+        error instanceof Error ? error.message : "unknown",
+      );
     });
 
     const token = await signAppSession({
@@ -394,6 +557,7 @@ export async function POST(request: Request) {
       orgId: membership.orgId,
       orgName: membership.orgName,
       onboardingCompleted: membership.onboardingCompleted,
+      setupPending: Boolean(membership.setupPending),
     });
     response.cookies.set(sessionCookieName, token, sessionCookieOptions());
 

@@ -9,23 +9,34 @@ import {
 import { PublicNavbar } from "@/components/layout/public-navbar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { assignments, notes, platformMetrics, reports } from "@/lib/mock-data";
 
 const groups = [
   {
     title: "Learning management",
     icon: FileText,
-    items: notes.map((n) => n.title),
+    items: [
+      "Classrooms with stream, classwork, materials, and people",
+      "Assignment deadlines with student submissions",
+      "Teacher resources, links, notes, and files",
+    ],
   },
   {
     title: "Teacher workflows",
     icon: ClipboardCheck,
-    items: assignments.map((a) => a.title),
+    items: [
+      "Create classes and add real students",
+      "Publish assignments with attachments",
+      "Grade submissions and return feedback",
+    ],
   },
   {
     title: "Admin intelligence",
     icon: ShieldCheck,
-    items: reports.slice(0, 3),
+    items: [
+      "Create student and teacher IDs",
+      "Manage users, roles, and invitations",
+      "Track live institute activity",
+    ],
   },
   {
     title: "Engagement layer",
@@ -49,11 +60,18 @@ export default function FeaturesPage() {
     <>
       <PublicNavbar />
       <main className="mx-auto max-w-7xl px-4 pb-20 pt-32">
-        <Badge className="mb-4">Features</Badge>
-        <h1 className="max-w-4xl text-4xl font-semibold tracking-tight md:text-6xl">
-          Built for daily learning, serious administration, and delightful
-          momentum.
-        </h1>
+        <section className="grid gap-8 lg:grid-cols-[0.8fr_1fr] lg:items-end">
+          <div>
+            <Badge className="mb-4">Features</Badge>
+            <h1 className="max-w-4xl text-4xl font-semibold tracking-tight md:text-6xl">
+              A clean classroom experience with serious power underneath.
+            </h1>
+          </div>
+          <p className="max-w-2xl text-lg leading-8 text-muted-foreground lg:justify-self-end">
+            EduPulse brings classroom posts, tasks, materials, users, and AI
+            support into one calm interface for students, teachers, and admins.
+          </p>
+        </section>
         <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {groups.map((group) => {
             const Icon = group.icon;
@@ -78,10 +96,15 @@ export default function FeaturesPage() {
         </div>
         <Card className="mt-8">
           <CardContent className="grid gap-4 p-6 md:grid-cols-4">
-            {platformMetrics.map((metric) => (
-              <div key={metric.label}>
-                <p className="text-sm text-muted-foreground">{metric.label}</p>
-                <p className="mt-2 text-3xl font-semibold">{metric.value}</p>
+            {[
+              ["Student hub", "Classes, tasks, materials"],
+              ["Teacher studio", "Create, post, grade"],
+              ["Admin control", "Users, roles, invites"],
+              ["Secure access", "Role-gated workflows"],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <p className="text-sm text-muted-foreground">{label}</p>
+                <p className="mt-2 text-xl font-semibold">{value}</p>
               </div>
             ))}
           </CardContent>

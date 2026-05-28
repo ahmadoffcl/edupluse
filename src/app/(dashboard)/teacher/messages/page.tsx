@@ -1,39 +1,24 @@
 import { MessagesPanel } from "@/components/dashboard/content-blocks";
-import { FeaturePage } from "@/components/dashboard/feature-page";
-import { getDashboardData } from "@/lib/dashboard/server-data";
+import { PageHeader } from "@/components/dashboard/page-header";
+import {
+  CommunicationComposerPanel,
+  CommunicationHistoryPanel,
+} from "@/components/teacher/teacher-workflow-panels";
+import { getTeacherWorkflowData } from "@/lib/dashboard/teacher-workflow";
 
 export default async function TeacherMessagesPage() {
-  const data = await getDashboardData();
+  const workflowData = await getTeacherWorkflowData();
 
   return (
     <div className="space-y-6">
-      <FeaturePage
+      <PageHeader
         eyebrow="Messaging"
-        title="Announcements, class channels, and student support."
-        description="Send announcements, answer questions, and keep class discussions structured."
-        action="New announcement"
-        items={[
-          {
-            title: "Class channels",
-            meta: "Active rooms",
-            stat: "9",
-            tone: "info",
-          },
-          {
-            title: "Direct messages",
-            meta: "Needs reply",
-            stat: "14",
-            tone: "warning",
-          },
-          {
-            title: "Announcements",
-            meta: "Sent this week",
-            stat: "6",
-            tone: "success",
-          },
-        ]}
+        title="Publish announcements and schedule class communication."
+        description="Send class announcements, create student notification records, and schedule exams or events from live class data."
       />
-      <MessagesPanel items={data.messages} />
+      <CommunicationComposerPanel data={workflowData} />
+      <CommunicationHistoryPanel data={workflowData} />
+      <MessagesPanel items={workflowData.messages} />
     </div>
   );
 }

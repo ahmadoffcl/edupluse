@@ -24,10 +24,15 @@ import { toast } from "sonner";
 import {
   getFirebaseAuth,
   getGoogleProvider,
+  getPersistentFirebaseAuth,
   isFirebaseConfigured,
 } from "@/lib/firebase/client";
 import { isDemoModeEnabled } from "@/lib/config";
 import { demoOrg, demoUsers } from "@/lib/mock-data";
+import {
+  hasCompletedOnboarding,
+  markOnboardingComplete,
+} from "@/lib/onboarding-storage";
 import type { AuthSessionResult, AuthUser, Role } from "@/lib/types";
 
 type AuthContextValue = {
@@ -164,6 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         orgId: string;
         orgName: string;
         onboardingCompleted: boolean;
+        setupPending?: boolean;
       };
     },
     [],
@@ -191,36 +197,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    let cancelled = false;
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (!firebaseUser) {
         setLoading(false);
         return;
       }
 
-      const role =
-        (window.localStorage.getItem("lumina.active.role") as Role | null) ??
-        "student";
-
-      setUser({
-        uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        displayName:
+      void (async () => {
+        const displayName =
           firebaseUser.displayName ??
           firebaseUser.email?.split("@")[0] ??
-          "EduPulse user",
-        photoURL: firebaseUser.photoURL,
-        emailVerified: firebaseUser.emailVerified,
-        role,
-        orgId: demoOrg.id,
-        orgName: demoOrg.name,
-        deviceSessionId: createDeviceSessionId(),
-        onboardingCompleted: false,
-      });
-      setLoading(false);
+          "EduPulse user";
+
+        try {
+          let session: Awaited<ReturnType<typeof createServerSession>>;
+          try {
+            session = await createServerSession(
+              undefined,
+              await firebaseUser.getIdToken(false),
+              {
+                displayName,
+                email: firebaseUser.email,
+                allowSelfSignup: true,
+              },
+            );
+          } catch {
+            session = await createServerSession(
+              undefined,
+              await firebaseUser.getIdToken(true),
+              {
+                displayName,
+                email: firebaseUser.email,
+                allowSelfSignup: true,
+              },
+            );
+          }
+
+          if (cancelled) return;
+
+          if (session.onboardingCompleted) {
+            markOnboardingComplete(session.role, [
+              firebaseUser.uid,
+              firebaseUser.email,
+            ]);
+          }
+
+          window.localStorage.setItem("lumina.active.role", session.role);
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName,
+            photoURL: firebaseUser.photoURL,
+            emailVerified: firebaseUser.emailVerified,
+            role: session.role,
+            orgId: session.orgId,
+            orgName: session.orgName,
+            deviceSessionId: createDeviceSessionId(),
+            onboardingCompleted:
+              session.onboardingCompleted ||
+              hasCompletedOnboarding(session.role, [
+                firebaseUser.uid,
+                firebaseUser.email,
+              ]),
+          });
+        } catch {
+          if (cancelled) return;
+          window.localStorage.removeItem("lumina.active.role");
+          setUser(null);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
     });
 
-    return unsubscribe;
-  }, []);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [createServerSession]);
 
   const setRole = useCallback(
     async (role: Role) => {
@@ -233,7 +288,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const auth = getFirebaseAuth();
+      const auth = await getPersistentFirebaseAuth();
       const firebaseUser = auth?.currentUser;
 
       await createServerSession(role, await firebaseUser?.getIdToken(false), {
@@ -261,6 +316,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         description: `Signed in as ${role.replace("_", " ")}.`,
       });
       return {
+        uid: demoUsers[role].uid,
+        email: demoUsers[role].email,
         role,
         orgId: demoOrg.id,
         orgName: demoOrg.name,
@@ -291,6 +348,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(userFromLocalAdmin(email));
         toast.success("Signed in");
         return {
+          uid: "local-admin",
+          email,
           role: "admin" as const,
           orgId: "11111111-1111-4111-8111-111111111111",
           orgName: "EduPulse Academy Network",
@@ -305,7 +364,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(data?.error ?? "Too many attempts. Try again later.");
       }
 
-      const auth = getFirebaseAuth();
+      const auth = await getPersistentFirebaseAuth();
       if (!auth && demoMode) {
         return loginWithDemo("student");
       }
@@ -316,18 +375,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email,
         password,
       );
-      const session = await createServerSession(
-        undefined,
-        await credential.user.getIdToken(false),
-        {
-          displayName:
-            credential.user.displayName ??
-            credential.user.email?.split("@")[0] ??
-            "EduPulse user",
-          email: credential.user.email,
-          allowSelfSignup: true,
-        },
-      );
+      let session: Awaited<ReturnType<typeof createServerSession>>;
+      try {
+        session = await createServerSession(
+          undefined,
+          await credential.user.getIdToken(false),
+          {
+            displayName:
+              credential.user.displayName ??
+              credential.user.email?.split("@")[0] ??
+              "EduPulse user",
+            email: credential.user.email,
+            allowSelfSignup: true,
+          },
+        );
+      } catch {
+        session = await createServerSession(
+          undefined,
+          await credential.user.getIdToken(true),
+          {
+            displayName:
+              credential.user.displayName ??
+              credential.user.email?.split("@")[0] ??
+              "EduPulse user",
+            email: credential.user.email,
+            allowSelfSignup: true,
+          },
+        );
+      }
+      if (session.onboardingCompleted) {
+        markOnboardingComplete(session.role, [
+          credential.user.uid,
+          credential.user.email,
+        ]);
+      }
       window.localStorage.setItem("lumina.active.role", session.role);
       setUser({
         uid: credential.user.uid,
@@ -345,14 +426,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         onboardingCompleted: session.onboardingCompleted,
       });
       toast.success("Signed in");
-      return session;
+      return {
+        ...session,
+        uid: credential.user.uid,
+        email: credential.user.email,
+      };
     },
     [createServerSession, demoMode, loginWithDemo],
   );
 
   const signUpWithEmail = useCallback(
     async (email: string, password: string, displayName: string) => {
-      const auth = getFirebaseAuth();
+      const auth = await getPersistentFirebaseAuth();
       if (!auth && demoMode) {
         return loginWithDemo("student");
       }
@@ -392,6 +477,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       return {
         ...session,
+        uid: credential.user.uid,
+        email: credential.user.email,
         onboardingCompleted: false,
       };
     },
@@ -399,7 +486,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const loginWithGoogle = useCallback(async () => {
-    const auth = getFirebaseAuth();
+    const auth = await getPersistentFirebaseAuth();
     if (!auth && demoMode) {
       return loginWithDemo("student");
     }
@@ -408,7 +495,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const credential = await signInWithPopup(auth, getGoogleProvider());
     const session = await createServerSession(
       undefined,
-      await credential.user.getIdToken(false),
+      await credential.user.getIdToken(true),
       {
         displayName:
           credential.user.displayName ??
@@ -418,6 +505,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         allowSelfSignup: true,
       },
     );
+    if (session.onboardingCompleted) {
+      markOnboardingComplete(session.role, [
+        credential.user.uid,
+        credential.user.email,
+      ]);
+    }
     window.localStorage.setItem("lumina.active.role", session.role);
     setUser({
       uid: credential.user.uid,
@@ -435,11 +528,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       onboardingCompleted: session.onboardingCompleted,
     });
     toast.success("Signed in with Google");
-    return session;
+    return {
+      ...session,
+      uid: credential.user.uid,
+      email: credential.user.email,
+    };
   }, [createServerSession, demoMode, loginWithDemo]);
 
   const resetPassword = useCallback(async (email: string) => {
-    const auth = getFirebaseAuth();
+    const auth = await getPersistentFirebaseAuth();
     if (!auth) {
       toast.info("Password reset unavailable", {
         description: "Password reset email is not configured yet.",
@@ -455,6 +552,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.localStorage.removeItem(storageKey);
     window.localStorage.removeItem(localAdminStorageKey);
     window.localStorage.removeItem(localAdminEmailStorageKey);
+    window.localStorage.removeItem("lumina.active.role");
     setUser(null);
     await fetch("/api/auth/session", { method: "DELETE" });
 

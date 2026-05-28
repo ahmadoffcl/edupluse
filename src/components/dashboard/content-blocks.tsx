@@ -13,6 +13,7 @@ import {
   Trophy,
   UploadCloud,
 } from "lucide-react";
+import Link from "next/link";
 import { LottieAnimation } from "@/components/ui/lottie-animation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -82,15 +83,15 @@ export function EmptyState({
   const animation = urbanPrimeEmptyAnimations[emptyStateAnimations[variant]];
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-dashed border-border bg-background/45 p-5 text-center">
-      <div className="mx-auto mb-4 grid size-32 place-items-center rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(124,156,255,0.18),transparent_62%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
+    <div className="overflow-hidden rounded-[1.25rem] border border-dashed border-border bg-background/45 p-4 text-center sm:rounded-3xl sm:p-5">
+      <div className="mx-auto mb-3 grid size-24 place-items-center rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,rgba(124,156,255,0.18),transparent_62%),linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] sm:mb-4 sm:size-32 sm:rounded-[2rem]">
         <LottieAnimation
           src={animation}
           alt="Empty state animation"
-          className="block size-28"
+          className="block size-20 sm:size-28"
         />
       </div>
-      <p className="mx-auto max-w-sm text-sm leading-6 text-muted-foreground">
+      <p className="mx-auto max-w-sm text-xs leading-5 text-muted-foreground sm:text-sm sm:leading-6">
         {message}
       </p>
     </div>
@@ -155,8 +156,12 @@ export function AssignmentsPanel({
               : "Track deadlines, submissions, and teacher feedback."}
           </CardDescription>
         </div>
-        <Button size="sm" variant={teacher ? "default" : "outline"}>
-          {teacher ? "Create" : "Submit"}
+        <Button asChild size="sm" variant={teacher ? "default" : "outline"}>
+          <Link
+            href={teacher ? "/teacher/assignments" : "/student/assignments"}
+          >
+            {teacher ? "Create" : "Submit"}
+          </Link>
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -224,9 +229,11 @@ export function NotesPanel({
             Searchable notes, PDFs, videos, and rich lesson material.
           </CardDescription>
         </div>
-        <Button size="sm" variant="outline">
-          {teacher ? <UploadCloud /> : <Download />}
-          {teacher ? "Upload" : "PDFs"}
+        <Button asChild size="sm" variant="outline">
+          <Link href={teacher ? "/teacher/uploads" : "/student/notes"}>
+            {teacher ? <UploadCloud /> : <Download />}
+            {teacher ? "Upload" : "PDFs"}
+          </Link>
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -435,6 +442,27 @@ export function QuickActionsPanel({
 }: {
   role: "student" | "teacher" | "admin";
 }) {
+  const hrefs: Record<"student" | "teacher" | "admin", string[]> = {
+    student: [
+      "/student/notes",
+      "/student/assignments",
+      "/student",
+      "/student/calendar",
+    ],
+    teacher: [
+      "/teacher/classes",
+      "/teacher/assignments",
+      "/teacher/uploads",
+      "/teacher/messages",
+    ],
+    admin: [
+      "/admin/invites",
+      "/admin/moderation",
+      "/admin/reports",
+      "/admin/security",
+    ],
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -444,10 +472,17 @@ export function QuickActionsPanel({
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 sm:grid-cols-2">
-        {quickActions[role].map((action) => (
-          <Button key={action} variant="outline" className="justify-start">
-            <Sparkles className="text-primary" />
-            {action}
+        {quickActions[role].map((action, index) => (
+          <Button
+            key={action}
+            asChild
+            variant="outline"
+            className="justify-start"
+          >
+            <Link href={hrefs[role][index] ?? `/${role}`}>
+              <Sparkles className="text-primary" />
+              {action}
+            </Link>
           </Button>
         ))}
       </CardContent>

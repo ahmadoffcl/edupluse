@@ -13,7 +13,7 @@ import {
   Search,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandLogo } from "@/components/brand/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,11 +23,24 @@ import { roleNav } from "@/lib/mock-data";
 import { canAccessPath, homeForRole } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 
+type NotificationItem = {
+  id: string;
+  title: string;
+  body: string;
+  kind: string;
+  readAt: string | null;
+  createdAt: string;
+};
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading, logout } = useAuth();
   const [openMobile, setOpenMobile] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -42,6 +55,74 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [loading, pathname, router, user]);
 
   const nav = useMemo(() => roleNav[user?.role ?? "student"], [user?.role]);
+  const searchItems = useMemo(
+    () =>
+      nav.map((item) => ({
+        title: item.title,
+        href: item.href,
+        icon: item.icon,
+        keywords: `${item.title} ${item.href}`.toLowerCase(),
+      })),
+    [nav],
+  );
+  const searchResults = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return searchItems.slice(0, 6);
+
+    return searchItems
+      .filter((item) => item.keywords.includes(query))
+      .slice(0, 6);
+  }, [searchItems, searchQuery]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+        searchInputRef.current?.focus();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+    async function loadNotifications() {
+      try {
+        const response = await fetch("/api/notifications", {
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          notifications?: NotificationItem[];
+        } | null;
+
+        if (!cancelled) {
+          setNotifications(payload?.notifications ?? []);
+        }
+      } catch {
+        if (!cancelled) setNotifications([]);
+      }
+    }
+
+    void loadNotifications();
+    const interval = window.setInterval(loadNotifications, 45_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [user]);
+
+  function openSearchResult(href: string) {
+    setSearchOpen(false);
+    setSearchQuery("");
+    router.push(href);
+  }
+
+  const unreadCount = notifications.filter((item) => !item.readAt).length;
 
   if (loading || !user) {
     return (
@@ -66,8 +147,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="premium-grid pointer-events-none fixed inset-x-0 top-0 h-[360px]" />
       <aside
         className={cn(
-          "fixed bottom-4 left-4 top-4 z-40 w-72 rounded-[2rem] border border-border/70 bg-card/80 p-4 shadow-[var(--shadow-glass)] backdrop-blur-2xl transition-transform lg:translate-x-0",
-          openMobile ? "translate-x-0" : "-translate-x-[110%] lg:translate-x-0",
+          "fixed bottom-4 left-4 top-4 z-40 hidden w-72 rounded-[2rem] border border-border/70 bg-card/80 p-4 shadow-[var(--shadow-glass)] backdrop-blur-2xl transition-transform lg:block lg:translate-x-0",
+          openMobile ? "translate-x-0" : "-translate-x-[110%]",
         )}
       >
         <div className="mb-6 flex items-center justify-between">
@@ -93,7 +174,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Button>
         </div>
 
-        <nav className="space-y-1">
+        <nav className="max-h-[calc(100vh-17rem)] space-y-1 overflow-y-auto pr-1">
           {nav.map((item) => {
             const active =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -127,8 +208,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="min-h-screen px-4 pb-10 pt-24 lg:pl-80 lg:pr-6">
-        <header className="fixed left-4 right-4 top-4 z-30 lg:left-80 lg:right-6">
+      <main className="min-h-screen px-3 pb-24 pt-4 sm:px-4 sm:pb-28 sm:pt-6 lg:pb-10 lg:pl-80 lg:pr-6 lg:pt-24">
+        <header className="fixed left-4 right-4 top-4 z-30 hidden lg:left-80 lg:right-6 lg:block">
           <div className="glass-panel flex h-16 items-center justify-between rounded-full px-3">
             <div className="flex items-center gap-2">
               <Button
@@ -139,19 +220,135 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Menu />
               </Button>
-              <div className="hidden h-10 min-w-72 items-center gap-3 rounded-full border border-border bg-background/60 px-4 text-sm text-muted-foreground md:flex">
-                <Search className="size-4" />
-                Search classes, notes, students
-                <Badge variant="secondary" className="ml-auto font-mono">
-                  <Command className="size-3" /> K
-                </Badge>
-              </div>
+              <form
+                className="relative hidden md:block"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const first = searchResults[0];
+                  if (first) openSearchResult(first.href);
+                }}
+              >
+                <div className="flex h-10 min-w-80 items-center gap-3 rounded-full border border-border bg-background/60 px-4 text-sm text-muted-foreground">
+                  <Search className="size-4" />
+                  <input
+                    ref={searchInputRef}
+                    value={searchQuery}
+                    onChange={(event) => {
+                      setSearchQuery(event.target.value);
+                      setSearchOpen(true);
+                    }}
+                    onFocus={() => setSearchOpen(true)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setSearchOpen(false);
+                    }}
+                    placeholder="Search pages and tools"
+                    className="h-full min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                  />
+                  <Badge variant="secondary" className="font-mono">
+                    <Command className="size-3" /> K
+                  </Badge>
+                </div>
+                {searchOpen ? (
+                  <div
+                    className="absolute left-0 right-0 top-12 z-50 rounded-3xl border border-border bg-popover p-2 text-popover-foreground shadow-2xl"
+                    onMouseDown={(event) => event.preventDefault()}
+                  >
+                    {searchResults.length === 0 ? (
+                      <div className="rounded-2xl bg-muted p-4 text-sm text-muted-foreground">
+                        No matching page found.
+                      </div>
+                    ) : (
+                      searchResults.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <button
+                            key={item.href}
+                            type="button"
+                            className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm hover:bg-muted"
+                            onClick={() => openSearchResult(item.href)}
+                          >
+                            <span className="grid size-9 place-items-center rounded-full bg-primary/10 text-primary">
+                              <Icon className="size-4" />
+                            </span>
+                            <span>
+                              <span className="block font-semibold">
+                                {item.title}
+                              </span>
+                              <span className="block text-xs text-muted-foreground">
+                                {item.href}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                ) : null}
+              </form>
             </div>
 
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" aria-label="Notifications">
-                <Bell />
-              </Button>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Notifications"
+                    className="relative"
+                  >
+                    <Bell />
+                    {unreadCount > 0 ? (
+                      <span className="absolute right-1 top-1 grid size-4 place-items-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                        {Math.min(unreadCount, 9)}
+                      </span>
+                    ) : null}
+                  </Button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    align="end"
+                    className="z-50 mt-2 w-88 rounded-3xl border border-border bg-popover p-3 text-popover-foreground shadow-2xl"
+                  >
+                    <div className="flex items-center justify-between gap-3 p-3">
+                      <div>
+                        <p className="font-semibold">Notifications</p>
+                        <p className="text-xs text-muted-foreground">
+                          Class alerts and returned work
+                        </p>
+                      </div>
+                      <Badge variant={unreadCount ? "warning" : "secondary"}>
+                        {unreadCount} new
+                      </Badge>
+                    </div>
+                    <div className="max-h-80 space-y-2 overflow-y-auto p-1">
+                      {notifications.length === 0 ? (
+                        <div className="rounded-2xl bg-muted p-3 text-sm">
+                          <p className="font-medium">No notifications yet</p>
+                          <p className="text-xs text-muted-foreground">
+                            Posts, grades, messages, and submission updates will
+                            appear here.
+                          </p>
+                        </div>
+                      ) : (
+                        notifications.map((item) => (
+                          <div
+                            key={item.id}
+                            className="rounded-2xl border border-border bg-background/70 p-3 text-sm"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="font-semibold">{item.title}</p>
+                              <Badge variant="secondary">{item.kind}</Badge>
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                              {item.body}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
               <ThemeToggle />
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger asChild>
@@ -186,10 +383,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </div>
                     <div className="space-y-2 p-2">
                       <div className="rounded-2xl bg-muted p-3 text-sm">
-                        <p className="font-medium">No notifications yet</p>
+                        <p className="font-medium">Workspace ready</p>
                         <p className="text-xs text-muted-foreground">
-                          Class alerts, messages, and achievement updates will
-                          appear here when your workspace has activity.
+                          Your session stays on this device until you sign out.
                         </p>
                       </div>
                     </div>
@@ -210,6 +406,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {children}
       </main>
+
+      <nav className="glass-panel fixed bottom-4 left-1/2 z-50 flex w-[min(calc(100%-2rem),440px)] -translate-x-1/2 items-center justify-between rounded-full px-2 py-2 lg:hidden">
+        {nav.slice(0, 5).map((item) => {
+          const active =
+            pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-label={item.title}
+              className={cn(
+                "grid size-12 place-items-center rounded-full text-muted-foreground motion-safe hover:bg-muted hover:text-foreground",
+                active && "bg-primary text-primary-foreground",
+              )}
+            >
+              <Icon className="size-5" />
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

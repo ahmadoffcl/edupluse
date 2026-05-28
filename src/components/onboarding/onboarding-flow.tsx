@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { useAuth } from "@/components/providers/auth-provider";
+import { markOnboardingComplete } from "@/lib/onboarding-storage";
 import { cn } from "@/lib/utils";
 
 type OnboardingStep = {
@@ -42,6 +44,7 @@ export function OnboardingFlow({
   finishHref: string;
 }) {
   const router = useRouter();
+  const { user } = useAuth();
   const [active, setActive] = useState(0);
   const [busy, setBusy] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -83,15 +86,23 @@ export function OnboardingFlow({
             undefined,
         }),
       });
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+        setupPending?: boolean;
+      } | null;
 
       if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
         throw new Error(data?.error ?? "Unable to save onboarding.");
       }
 
-      toast.success("Profile saved");
+      if (!data?.setupPending) {
+        markOnboardingComplete(audience, [user?.uid, user?.email]);
+        toast.success("Profile saved");
+      } else {
+        toast.success("Setup accepted", {
+          description: "Your dashboard is ready while workspace data syncs.",
+        });
+      }
       router.push(finishHref);
     } catch (error) {
       toast.error("Onboarding could not be saved", {

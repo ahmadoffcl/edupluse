@@ -1,32 +1,18 @@
-import { FeaturePage } from "@/components/dashboard/feature-page";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { ProfileSettingsPanel } from "@/components/profile/profile-settings-panel";
+import { getProfileSettings } from "@/lib/dashboard/profile-settings";
 
-export default function TeacherSettingsPage() {
+export default async function TeacherSettingsPage() {
+  const data = await getProfileSettings();
+
   return (
-    <FeaturePage
-      eyebrow="Teacher settings"
-      title="Teaching preferences, profile, and workflow controls."
-      description="Configure notifications, grading preferences, upload defaults, office hours, and AI assistance."
-      action="Save settings"
-      items={[
-        {
-          title: "Profile",
-          meta: "Bio, subjects, availability",
-          stat: "Complete",
-          tone: "success",
-        },
-        {
-          title: "Grading",
-          meta: "Rubrics and return targets",
-          stat: "4 rubrics",
-          tone: "info",
-        },
-        {
-          title: "AI guardrails",
-          meta: "Summaries and quiz drafts",
-          stat: "Enabled",
-          tone: "success",
-        },
-      ]}
-    />
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Teacher settings"
+        title="Tune your teaching profile and classroom preferences."
+        description="Update your profile image, public username, contact details, teacher bio, notifications, digest, and leaderboard visibility."
+      />
+      <ProfileSettingsPanel data={data} role="teacher" />
+    </div>
   );
 }

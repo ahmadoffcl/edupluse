@@ -24,6 +24,7 @@
 # misc
 .DS_Store
 *.pem
+*-firebase-adminsdk-*.json
 
 # debug
 npm-debug.log*
@@ -35,6 +36,7 @@ dev-server.*.log
 
 # env files (can opt-in for committing if needed)
 .env*
+/secrets/
 
 # vercel
 .vercel

@@ -1,5 +1,6 @@
 import {
   CalendarDays,
+  CalendarClock,
   ChartNoAxesCombined,
   ClipboardCheck,
   FileText,
@@ -63,17 +64,14 @@ export const demoUsers = {
 export const roleNav: Record<Role, NavItem[]> = {
   student: [
     { title: "Dashboard", href: "/student", icon: LayoutDashboard },
+    { title: "Classes", href: "/student/classes", icon: GraduationCap },
+    { title: "Upcoming", href: "/student/upcoming", icon: CalendarClock },
     {
       title: "Assignments",
       href: "/student/assignments",
       icon: ClipboardCheck,
     },
     { title: "Notes", href: "/student/notes", icon: FileText },
-    {
-      title: "Attendance",
-      href: "/student/attendance",
-      icon: ChartNoAxesCombined,
-    },
     { title: "Leaderboard", href: "/student/leaderboard", icon: Medal },
     { title: "Calendar", href: "/student/calendar", icon: CalendarDays },
     { title: "Messages", href: "/student/messages", icon: MessageSquareText },
@@ -81,12 +79,12 @@ export const roleNav: Record<Role, NavItem[]> = {
   ],
   teacher: [
     { title: "Dashboard", href: "/teacher", icon: LayoutDashboard },
+    { title: "Classes", href: "/teacher/classes", icon: GraduationCap },
     {
       title: "Assignments",
       href: "/teacher/assignments",
       icon: ClipboardCheck,
     },
-    { title: "Attendance", href: "/teacher/attendance", icon: ClipboardCheck },
     {
       title: "Analytics",
       href: "/teacher/analytics",
@@ -99,6 +97,7 @@ export const roleNav: Record<Role, NavItem[]> = {
   admin: [
     { title: "Dashboard", href: "/admin", icon: Gauge },
     { title: "Users", href: "/admin/users", icon: UsersRound },
+    { title: "ID Maker", href: "/admin/id-maker", icon: UserPlus },
     { title: "Invites", href: "/admin/invites", icon: UserPlus },
     { title: "Reports", href: "/admin/reports", icon: FileText },
     { title: "Analytics", href: "/admin/analytics", icon: ChartNoAxesCombined },
@@ -109,6 +108,7 @@ export const roleNav: Record<Role, NavItem[]> = {
   super_admin: [
     { title: "Dashboard", href: "/admin", icon: Gauge },
     { title: "Organizations", href: "/admin/users", icon: GraduationCap },
+    { title: "ID Maker", href: "/admin/id-maker", icon: UserPlus },
     { title: "Reports", href: "/admin/reports", icon: FileText },
     { title: "Settings", href: "/admin/settings", icon: Settings },
   ],
@@ -374,10 +374,10 @@ export const quickActions = {
     "Join next live class",
   ],
   teacher: [
-    "Mark Grade 10-A attendance",
-    "Grade urgent submissions",
+    "Create a class",
+    "Open assignments",
     "Upload lesson resource",
-    "Send class announcement",
+    "Message students",
   ],
   admin: [
     "Invite staff members",

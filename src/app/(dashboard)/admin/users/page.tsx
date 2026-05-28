@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ShieldCheck, UserPlus } from "lucide-react";
 import { AdminUserActions } from "@/components/admin/admin-user-actions";
 import { EmptyState } from "@/components/dashboard/content-blocks";
@@ -33,8 +34,10 @@ export default async function AdminUsersPage() {
         title="Manage every real account that joins your institution."
         description="Review registered users, roles, account status, usernames, and access actions from one admin surface."
         action={
-          <Button variant="premium">
-            <UserPlus /> Invite user
+          <Button asChild variant="premium">
+            <Link href="/admin/invites">
+              <UserPlus /> Invite user
+            </Link>
           </Button>
         }
       />
@@ -94,6 +97,11 @@ export default async function AdminUsersPage() {
                     {user.username ? `@${user.username}` : "Username not set"} -
                     {` ${user.email}`}
                   </p>
+                  {user.phone && (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Phone: {user.phone}
+                    </p>
+                  )}
                   <p className="mt-1 text-xs text-muted-foreground">
                     Last active: {formatDateTime(user.lastSeenAt)}
                   </p>

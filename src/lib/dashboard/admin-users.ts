@@ -9,6 +9,7 @@ export type AdminUserRow = {
   profileId: string;
   firebaseUid: string;
   email: string;
+  phone: string | null;
   displayName: string;
   username: string | null;
   role: Role;
@@ -30,19 +31,56 @@ function stringValue(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
+function isMissingProfileColumn(error: unknown, column: string) {
+  if (!error || typeof error !== "object") return false;
+
+  const candidate = error as { code?: string; message?: string };
+
+  return (
+    candidate.code === "PGRST204" ||
+    candidate.code === "42703" ||
+    Boolean(
+      candidate.message?.includes(column) &&
+      (candidate.message.includes("schema cache") ||
+        candidate.message.includes("does not exist")),
+    )
+  );
+}
+
+function isMissingOptionalProfileColumn(error: unknown) {
+  return (
+    isMissingProfileColumn(error, "phone") ||
+    isMissingProfileColumn(error, "username")
+  );
+}
+
 export async function getAdminUsers(): Promise<AdminUserRow[]> {
   const session = await getCurrentAppSession();
   const supabase = getSupabaseServiceClient();
 
   if (!session || !supabase) return [];
 
-  const { data, error } = await supabase
+  const userResult = await supabase
     .from("memberships")
     .select(
-      "id,role,status,created_at,profiles(id,firebase_uid,email,display_name,username)",
+      "id,role,status,created_at,profiles!memberships_profile_id_fkey(id,firebase_uid,email,phone,display_name,username)",
     )
     .eq("org_id", session.orgId)
     .order("created_at", { ascending: false });
+  let data = userResult.data as unknown[] | null;
+  let error = userResult.error;
+
+  if (error && isMissingOptionalProfileColumn(error)) {
+    const fallback = await supabase
+      .from("memberships")
+      .select(
+        "id,role,status,created_at,profiles!memberships_profile_id_fkey(id,firebase_uid,email,display_name)",
+      )
+      .eq("org_id", session.orgId)
+      .order("created_at", { ascending: false });
+    data = fallback.data;
+    error = fallback.error;
+  }
 
   if (error || !data) return [];
 
@@ -54,6 +92,7 @@ export async function getAdminUsers(): Promise<AdminUserRow[]> {
       profileId: stringValue(profile?.id),
       firebaseUid: stringValue(profile?.firebase_uid),
       email: stringValue(profile?.email, "No email"),
+      phone: stringValue(profile?.phone) || null,
       displayName: stringValue(profile?.display_name, "Unnamed user"),
       username: stringValue(profile?.username) || null,
       role: stringValue(row.role, "student") as Role,

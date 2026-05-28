@@ -183,7 +183,7 @@ export function CompletionDonut({ data = [] }: { data?: DonutPoint[] }) {
                     style={{ backgroundColor: palette[index % palette.length] }}
                   />
                   <span className="text-muted-foreground">{item.name}</span>
-                  <span className="ml-auto font-semibold">{item.value}%</span>
+                  <span className="ml-auto font-semibold">{item.value}</span>
                 </div>
               ))}
             </div>

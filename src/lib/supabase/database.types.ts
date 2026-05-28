@@ -38,6 +38,10 @@ export type Database = {
           firebase_uid: string;
           email: string | null;
           display_name: string;
+          phone: string | null;
+          username: string | null;
+          bio: string | null;
+          onboarding_completed_at: string | null;
           avatar_url: string | null;
           created_at: string;
           updated_at: string;
@@ -47,6 +51,10 @@ export type Database = {
           firebase_uid: string;
           email?: string | null;
           display_name: string;
+          phone?: string | null;
+          username?: string | null;
+          bio?: string | null;
+          onboarding_completed_at?: string | null;
           avatar_url?: string | null;
           created_at?: string;
           updated_at?: string;

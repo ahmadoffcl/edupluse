@@ -12,31 +12,33 @@ const toneClass: Record<Metric["tone"], string> = {
 
 export function MetricGrid({ metrics }: { metrics: Metric[] }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {metrics.map((metric) => (
         <Card key={metric.label} className="overflow-hidden">
-          <CardContent className="p-5">
+          <CardContent className="p-3.5 sm:p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">{metric.label}</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight">
+                <p className="text-xs text-muted-foreground sm:text-sm">
+                  {metric.label}
+                </p>
+                <p className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
                   {metric.value}
                 </p>
               </div>
               <span
                 className={cn(
-                  "grid size-10 place-items-center rounded-2xl",
+                  "grid size-8 place-items-center rounded-2xl sm:size-9",
                   toneClass[metric.tone],
                 )}
               >
                 {metric.tone === "warning" ? (
-                  <CircleAlert className="size-5" />
+                  <CircleAlert className="size-4" />
                 ) : (
-                  <Sparkles className="size-5" />
+                  <Sparkles className="size-4" />
                 )}
               </span>
             </div>
-            <div className="mt-5 flex items-center gap-1 text-sm font-medium text-muted-foreground">
+            <div className="mt-3 flex items-center gap-1 text-xs font-medium text-muted-foreground sm:mt-4">
               <ArrowUpRight className="size-4 text-emerald-500" />
               {metric.delta}
             </div>

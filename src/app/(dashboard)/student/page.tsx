@@ -1,54 +1,47 @@
-import { Button } from "@/components/ui/button";
 import { AiPanel } from "@/components/ai/ai-panel";
 import {
   ActivityPanel,
-  AssignmentsPanel,
   GamificationPanel,
-  LeaderboardPanel,
-  NotesPanel,
-  QuickActionsPanel,
-  SchedulePanel,
 } from "@/components/dashboard/content-blocks";
-import {
-  AttendanceChart,
-  EngagementChart,
-} from "@/components/dashboard/charts";
 import { MetricGrid } from "@/components/dashboard/metric-grid";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { StudentClassesPanel } from "@/components/student/student-classes-panel";
+import { StudentPerformancePanel } from "@/components/student/student-performance-panel";
+import { UpcomingTasksPanel } from "@/components/student/upcoming-tasks-panel";
 import { getDashboardData } from "@/lib/dashboard/server-data";
+import { getStudentPerformanceData } from "@/lib/dashboard/student-performance";
 
 export default async function StudentDashboardPage() {
-  const data = await getDashboardData();
+  const [data, performanceData] = await Promise.all([
+    getDashboardData(),
+    getStudentPerformanceData(),
+  ]);
+  const visibleMetrics = data.metrics
+    .filter((metric) => metric.label !== "Attendance")
+    .slice(0, 3);
 
   return (
-    <div>
+    <div className="space-y-4 sm:space-y-5">
       <PageHeader
         eyebrow="Student dashboard"
-        title="Your daily learning command center."
-        description="Schedule, assignments, notes, attendance, gamification, messages, and AI support in one motivating workspace."
-        action={<Button variant="premium">Ask AI study assistant</Button>}
+        title="Your classroom, today."
+        description="A clean view of your classes, upcoming work, feedback, and learning progress."
       />
-      <MetricGrid metrics={data.metrics} />
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_380px]">
-        <div className="space-y-6">
-          <QuickActionsPanel role="student" />
-          <SchedulePanel items={data.schedule} />
-          <AssignmentsPanel items={data.assignments} />
-          <div className="grid gap-6 xl:grid-cols-2">
-            <EngagementChart data={data.engagementChart} />
-            <AttendanceChart data={data.attendanceChart} />
-          </div>
-          <NotesPanel items={data.notes} />
-        </div>
-        <div className="space-y-6">
-          <AiPanel />
+      <MetricGrid metrics={visibleMetrics} />
+      <div className="grid gap-4 xl:grid-cols-[1fr_340px] xl:gap-5">
+        <main className="space-y-4 sm:space-y-5">
+          <StudentClassesPanel classes={data.classes} compact />
+          <UpcomingTasksPanel tasks={data.upcomingTasks} compact />
+          <StudentPerformancePanel data={performanceData} />
+        </main>
+        <aside className="space-y-4 sm:space-y-5 xl:sticky xl:top-24 xl:self-start">
           <GamificationPanel
             totalXp={data.totalXp}
             streak={data.leaderboard[0]?.streak ?? 0}
           />
-          <LeaderboardPanel items={data.leaderboard} />
           <ActivityPanel items={data.activities} />
-        </div>
+          <AiPanel />
+        </aside>
       </div>
     </div>
   );

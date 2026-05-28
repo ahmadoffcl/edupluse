@@ -1,6 +1,7 @@
 import type { Role } from "@/lib/types";
 
 export const sessionCookieName = "lumina_session";
+export const sessionMaxAgeSeconds = 60 * 60 * 24 * 30;
 
 export type AppSession = {
   uid: string;
@@ -70,7 +71,7 @@ function safeEqual(a: string, b: string) {
 export async function signAppSession(
   session: Omit<AppSession, "exp"> & { maxAgeSeconds?: number },
 ) {
-  const { maxAgeSeconds = 60 * 60 * 8, ...payload } = session;
+  const { maxAgeSeconds = sessionMaxAgeSeconds, ...payload } = session;
   const exp = Math.floor(Date.now() / 1000) + maxAgeSeconds;
   const encodedPayload = base64UrlEncode(
     new TextEncoder().encode(JSON.stringify({ ...payload, exp })),
@@ -110,6 +111,6 @@ export function sessionCookieOptions() {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     path: "/",
-    maxAge: 60 * 60 * 8,
+    maxAge: sessionMaxAgeSeconds,
   };
 }

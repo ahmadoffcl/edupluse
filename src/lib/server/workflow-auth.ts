@@ -1,0 +1,291 @@
+import "server-only";
+import { NextResponse } from "next/server";
+import { getCurrentAppSession } from "@/lib/auth/server";
+import { canManageTeacherOwnedRecord } from "@/lib/server/access-policy";
+import { getSupabaseServiceClient } from "@/lib/supabase/server";
+import type { Role } from "@/lib/types";
+
+type SupabaseService = NonNullable<ReturnType<typeof getSupabaseServiceClient>>;
+
+export type WorkflowContext = {
+  session: NonNullable<Awaited<ReturnType<typeof getCurrentAppSession>>>;
+  supabase: SupabaseService;
+  profileId: string | null;
+};
+
+export function jsonError(message: string, status = 400) {
+  return NextResponse.json({ ok: false, error: message }, { status });
+}
+
+export function isAdminRole(role: Role) {
+  return role === "admin" || role === "super_admin";
+}
+
+export function isTeacherRole(role: Role) {
+  return role === "teacher" || role === "admin" || role === "super_admin";
+}
+
+export async function requireWorkflowContext(
+  allowedRoles: readonly Role[],
+  options: { profileRequired?: boolean } = {},
+): Promise<WorkflowContext | NextResponse> {
+  const session = await getCurrentAppSession();
+
+  if (!session) {
+    return jsonError("Unauthorized.", 401);
+  }
+
+  if (!allowedRoles.includes(session.role)) {
+    return jsonError("Forbidden.", 403);
+  }
+
+  const supabase = getSupabaseServiceClient();
+  if (!supabase) {
+    return jsonError("Workspace data is unavailable.", 503);
+  }
+
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("firebase_uid", session.uid)
+    .maybeSingle();
+
+  if (error) {
+    return jsonError("Unable to load your profile.", 500);
+  }
+
+  if (!profile?.id && options.profileRequired !== false) {
+    return jsonError("Profile is not ready yet.", 404);
+  }
+
+  return {
+    session,
+    supabase,
+    profileId: (profile?.id as string | undefined) ?? null,
+  };
+}
+
+export function isWorkflowResponse(value: unknown): value is NextResponse {
+  return value instanceof NextResponse;
+}
+
+export async function writeAuditLog(
+  context: WorkflowContext,
+  details: {
+    action: string;
+    entity?: string;
+    entityId?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+) {
+  const { error } = await context.supabase.from("audit_logs").insert({
+    org_id: context.session.orgId,
+    actor_id: context.profileId,
+    action: details.action,
+    entity: details.entity,
+    entity_id: details.entityId ?? null,
+    metadata: details.metadata ?? {},
+  });
+
+  if (error) {
+    console.warn("Audit log skipped", {
+      action: details.action,
+      entity: details.entity,
+      code: error.code,
+    });
+  }
+}
+
+export async function requireClassAccess(
+  context: WorkflowContext,
+  classId: string | null | undefined,
+) {
+  if (!classId) return null;
+
+  const { data, error } = await context.supabase
+    .from("classes")
+    .select("id,name,teacher_id")
+    .eq("id", classId)
+    .eq("org_id", context.session.orgId)
+    .maybeSingle();
+
+  if (error) return jsonError("Unable to verify class access.", 500);
+  if (!data) return jsonError("Class was not found.", 404);
+
+  if (
+    !canManageTeacherOwnedRecord({
+      role: context.session.role,
+      profileId: context.profileId,
+      ownerId: data.teacher_id,
+    })
+  ) {
+    return jsonError("You do not have access to this class.", 403);
+  }
+
+  return data as { id: string; name: string; teacher_id: string | null };
+}
+
+export async function requireResourceAccess(
+  context: WorkflowContext,
+  resourceId: string,
+) {
+  const { data, error } = await context.supabase
+    .from("resources")
+    .select("id,title,teacher_id,class_id,file_path")
+    .eq("id", resourceId)
+    .eq("org_id", context.session.orgId)
+    .maybeSingle();
+
+  if (error) return jsonError("Unable to verify resource access.", 500);
+  if (!data) return jsonError("Resource was not found.", 404);
+
+  if (
+    !canManageTeacherOwnedRecord({
+      role: context.session.role,
+      profileId: context.profileId,
+      ownerId: data.teacher_id,
+    })
+  ) {
+    return jsonError("You do not have access to this resource.", 403);
+  }
+
+  return data as {
+    id: string;
+    title: string;
+    teacher_id: string | null;
+    class_id: string | null;
+    file_path: string | null;
+  };
+}
+
+export async function requireAssignmentAccess(
+  context: WorkflowContext,
+  assignmentId: string,
+) {
+  const { data, error } = await context.supabase
+    .from("assignments")
+    .select("id,title,class_id,teacher_id,points")
+    .eq("id", assignmentId)
+    .eq("org_id", context.session.orgId)
+    .maybeSingle();
+
+  if (error) return jsonError("Unable to verify assignment access.", 500);
+  if (!data) return jsonError("Assignment was not found.", 404);
+
+  if (
+    !canManageTeacherOwnedRecord({
+      role: context.session.role,
+      profileId: context.profileId,
+      ownerId: data.teacher_id,
+    })
+  ) {
+    return jsonError("You do not have access to this assignment.", 403);
+  }
+
+  return data as {
+    id: string;
+    title: string;
+    class_id: string;
+    teacher_id: string;
+    points: number;
+  };
+}
+
+export async function requireSubmissionAccess(
+  context: WorkflowContext,
+  submissionId: string,
+) {
+  const { data, error } = await context.supabase
+    .from("submissions")
+    .select(
+      "id,student_id,assignment_id,assignments(id,title,teacher_id,points)",
+    )
+    .eq("id", submissionId)
+    .eq("org_id", context.session.orgId)
+    .maybeSingle();
+
+  if (error) return jsonError("Unable to verify submission access.", 500);
+  if (!data) return jsonError("Submission was not found.", 404);
+
+  const assignment = Array.isArray(data.assignments)
+    ? data.assignments[0]
+    : data.assignments;
+
+  if (
+    !canManageTeacherOwnedRecord({
+      role: context.session.role,
+      profileId: context.profileId,
+      ownerId: assignment?.teacher_id,
+    })
+  ) {
+    return jsonError("You do not have access to this submission.", 403);
+  }
+
+  return {
+    id: data.id as string,
+    studentId: data.student_id as string,
+    assignmentId: data.assignment_id as string,
+    assignment: assignment as
+      | {
+          id: string;
+          title: string;
+          teacher_id: string;
+          points: number;
+        }
+      | undefined,
+  };
+}
+
+export async function requireAnnouncementAccess(
+  context: WorkflowContext,
+  announcementId: string,
+) {
+  const { data, error } = await context.supabase
+    .from("announcements")
+    .select("id,class_id,created_by")
+    .eq("id", announcementId)
+    .eq("org_id", context.session.orgId)
+    .maybeSingle();
+
+  if (error) return jsonError("Unable to verify announcement access.", 500);
+  if (!data) return jsonError("Announcement was not found.", 404);
+
+  if (
+    !canManageTeacherOwnedRecord({
+      role: context.session.role,
+      profileId: context.profileId,
+      ownerId: data.created_by,
+    })
+  ) {
+    return jsonError("You do not have access to this announcement.", 403);
+  }
+
+  return data as { id: string; class_id: string | null; created_by: string };
+}
+
+export async function requireCalendarAccess(
+  context: WorkflowContext,
+  eventId: string,
+) {
+  const { data, error } = await context.supabase
+    .from("calendar_events")
+    .select("id,class_id,owner_id")
+    .eq("id", eventId)
+    .eq("org_id", context.session.orgId)
+    .maybeSingle();
+
+  if (error) return jsonError("Unable to verify calendar access.", 500);
+  if (!data) return jsonError("Calendar event was not found.", 404);
+
+  if (
+    !canManageTeacherOwnedRecord({
+      role: context.session.role,
+      profileId: context.profileId,
+      ownerId: data.owner_id,
+    })
+  ) {
+    return jsonError("You do not have access to this calendar event.", 403);
+  }
+
+  return data as { id: string; class_id: string | null; owner_id: string };
+}

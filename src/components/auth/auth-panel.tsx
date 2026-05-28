@@ -1,19 +1,56 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import Image from "next/image";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, Globe2, ShieldCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Globe2,
+  LockKeyhole,
+  Mail,
+  UserRound,
+} from "lucide-react";
 import { toast } from "sonner";
-import { BrandLogo } from "@/components/brand/brand-logo";
 import { PublicNavbar } from "@/components/layout/public-navbar";
 import { useAuth } from "@/components/providers/auth-provider";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { hasCompletedOnboarding } from "@/lib/onboarding-storage";
 import { homeForRole } from "@/lib/permissions";
+import { cn } from "@/lib/utils";
 import type { AuthSessionResult } from "@/lib/types";
+
+type AuthMode = "login" | "signup";
+type AuthPanelMode = AuthMode | "reset";
+
+const authCopy = {
+  login: {
+    title: "Sign In",
+    submit: "Login",
+    switchAction: "SignUp",
+  },
+  signup: {
+    title: "Sign Up",
+    submit: "Create Account",
+    switchAction: "SignIn",
+  },
+  reset: {
+    title: "Reset Password",
+    submit: "Send Reset Link",
+    switchAction: "SignIn",
+  },
+} satisfies Record<
+  AuthPanelMode,
+  {
+    title: string;
+    submit: string;
+    switchAction: string;
+  }
+>;
 
 function authErrorMessage(error: unknown) {
   const message =
@@ -31,51 +68,125 @@ function authErrorMessage(error: unknown) {
   }
 
   if (message.includes("Workspace access is not configured")) {
-    return "Workspace access is not ready yet. Please contact support.";
+    return "Your account can continue setup now. If this repeats, sign out and try again.";
   }
 
   if (message.includes("Workspace setup is not complete")) {
-    return "Workspace setup is not complete yet. Please contact support.";
+    return "Your account can continue setup now. If this repeats, sign out and try again.";
   }
 
   if (message.includes("No active EduPulse profile")) {
-    return "This account is not part of an institute yet. Please ask your admin for access.";
+    return "This account can be set up now. Please create your profile to continue.";
   }
 
   return message;
 }
 
-export function AuthPanel({ mode }: { mode: "login" | "signup" | "reset" }) {
+function AuthBackdrop() {
+  return (
+    <>
+      <Image
+        src="/auth-login-bg.jpg"
+        alt=""
+        fill
+        sizes="100vw"
+        className="absolute inset-0 -z-40 scale-105 object-cover blur-xl"
+        style={{ objectPosition: "center center" }}
+      />
+      <Image
+        src="/auth-login-bg.jpg"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="absolute inset-0 -z-30 object-cover object-[26%_center] sm:object-contain sm:object-left"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-20 bg-[linear-gradient(90deg,rgba(3,7,22,0.04)_0%,rgba(3,7,22,0.08)_42%,rgba(3,7,22,0.68)_67%,rgba(3,7,22,0.96)_100%)]"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_78%_42%,rgba(80,227,255,0.22),transparent_30%),radial-gradient(circle_at_92%_76%,rgba(168,85,247,0.2),transparent_34%),linear-gradient(180deg,rgba(6,10,26,0.02),rgba(6,10,26,0.28))]"
+      />
+    </>
+  );
+}
+
+function AuthField({
+  children,
+  icon,
+}: {
+  children: React.ReactNode;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-cyan-600">
+        {icon}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const next = searchParams.get("next");
+  const reducedMotion = useReducedMotion() ?? false;
+  const isReset = mode === "reset";
+  const [authMode, setAuthMode] = useState<AuthMode>(
+    mode === "signup" ? "signup" : "login",
+  );
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const {
     configured,
+    loading,
     loginWithDemo,
     loginWithEmail,
     loginWithGoogle,
     resetPassword,
     signUpWithEmail,
+    user,
   } = useAuth();
   const demoMode = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === "true";
+  const activeMode: AuthPanelMode = isReset ? "reset" : authMode;
+  const copy = authCopy[activeMode];
 
-  const title = useMemo(() => {
-    if (mode === "signup") return "Create your EduPulse account";
-    if (mode === "reset") return "Reset your password";
-    return "Welcome back to EduPulse";
-  }, [mode]);
+  useEffect(() => {
+    if (loading || !user || isReset) return;
 
-  async function finish(result: AuthSessionResult) {
-    if (next && result.onboardingCompleted) {
-      router.push(next);
+    if (user.onboardingCompleted) {
+      router.replace(homeForRole(user.role));
       return;
     }
 
-    if (result.onboardingCompleted) {
+    if (user.role === "student") {
+      router.replace("/onboarding/student");
+      return;
+    }
+
+    if (user.role === "teacher") {
+      router.replace("/onboarding/teacher");
+      return;
+    }
+
+    router.replace(homeForRole(user.role));
+  }, [isReset, loading, router, user]);
+
+  async function finish(result: AuthSessionResult) {
+    const localOnboardingCompleted = hasCompletedOnboarding(result.role, [
+      result.uid,
+      result.email,
+      email,
+    ]);
+    const onboardingCompleted =
+      result.onboardingCompleted || localOnboardingCompleted;
+
+    if (onboardingCompleted) {
       router.push(homeForRole(result.role));
       return;
     }
@@ -93,18 +204,26 @@ export function AuthPanel({ mode }: { mode: "login" | "signup" | "reset" }) {
     router.push(homeForRole(result.role));
   }
 
+  function switchMode() {
+    if (isReset) {
+      router.push("/login");
+      return;
+    }
+    setAuthMode(authMode === "login" ? "signup" : "login");
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
 
     try {
-      if (mode === "reset") {
+      if (isReset) {
         await resetPassword(email);
         router.push("/login");
         return;
       }
 
-      if (mode === "signup") {
+      if (authMode === "signup") {
         const resolvedRole = await signUpWithEmail(
           email,
           password,
@@ -124,99 +243,205 @@ export function AuthPanel({ mode }: { mode: "login" | "signup" | "reset" }) {
     }
   }
 
+  if (!isReset && (loading || user)) {
+    return (
+      <>
+        <PublicNavbar />
+        <main className="relative isolate min-h-dvh overflow-hidden px-4 pb-8 pt-28 text-white sm:px-6 lg:pt-32">
+          <AuthBackdrop />
+          <div className="mx-auto grid min-h-[calc(100dvh-9rem)] w-full max-w-6xl items-center lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+            <div aria-hidden="true" className="hidden lg:block" />
+            <div className="mx-auto w-full max-w-sm rounded-2xl border border-white/55 bg-white/88 p-6 text-center text-slate-950 shadow-[0_28px_90px_-38px_rgba(34,211,238,0.9)] backdrop-blur-2xl lg:mx-0 lg:justify-self-end">
+              <p className="text-lg font-semibold">Opening your dashboard</p>
+              <p className="mt-2 text-sm text-slate-600">
+                Restoring your secure session on this device.
+              </p>
+            </div>
+          </div>
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <PublicNavbar />
-      <main className="grid min-h-screen px-4 pb-12 pt-28 lg:grid-cols-[1fr_520px]">
-        <section className="mx-auto hidden max-w-3xl flex-col justify-center lg:flex">
-          <Badge className="mb-4">
-            <ShieldCheck className="size-3" />
-            Secure role-based onboarding
-          </Badge>
-          <h1 className="text-5xl font-semibold tracking-tight">
-            One beautiful workspace for every learner, teacher, and institute
-            admin.
-          </h1>
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            {["Secure access", "Role dashboards", "Daily learning hub"].map(
-              (item) => (
-                <Card key={item}>
-                  <CardContent className="p-5 text-sm font-semibold">
-                    {item}
-                  </CardContent>
-                </Card>
-              ),
-            )}
-          </div>
-        </section>
+      <main className="relative isolate min-h-dvh overflow-x-hidden overflow-y-auto px-4 pb-8 pt-28 text-white sm:px-6 lg:pt-32">
+        <AuthBackdrop />
 
-        <section className="mx-auto flex w-full max-w-xl items-center">
-          <Card className="w-full">
-            <CardContent className="p-6 md:p-8">
-              <div className="mb-8 flex items-center gap-3">
-                <BrandLogo showText={false} markClassName="size-12" />
-                <div>
-                  <p className="text-sm text-muted-foreground">EduPulse</p>
-                  <h2 className="text-2xl font-semibold">{title}</h2>
-                </div>
-              </div>
+        <div className="mx-auto grid min-h-[calc(100dvh-9rem)] w-full max-w-6xl items-center lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+          <div aria-hidden="true" className="hidden lg:block" />
 
-              <form
-                action="/api/auth/admin-session"
-                className="space-y-4"
-                method="post"
-                onSubmit={onSubmit}
-              >
-                <input
-                  type="hidden"
-                  name="deviceSessionId"
-                  value="form-session"
-                />
-                {mode === "signup" && (
-                  <Input
-                    name="displayName"
-                    placeholder="Full name"
-                    value={displayName}
-                    onChange={(event) => setDisplayName(event.target.value)}
-                  />
-                )}
-                <Input
-                  name="email"
-                  type="email"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                />
-                {mode !== "reset" && (
-                  <Input
-                    name="password"
-                    type="password"
-                    placeholder="Password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    required
-                  />
-                )}
-                <Button
-                  className="w-full"
-                  variant="premium"
-                  type="submit"
-                  disabled={busy}
+          <motion.section
+            data-auth-card
+            className="relative mx-auto w-full max-w-[420px] overflow-hidden rounded-2xl border border-white/60 bg-white/90 px-6 pb-6 pt-7 text-slate-950 shadow-[0_30px_110px_-42px_rgba(34,211,238,0.95)] backdrop-blur-2xl sm:px-7 lg:mx-0 lg:justify-self-end"
+            initial={
+              reducedMotion ? false : { opacity: 0, x: 24, scale: 0.985 }
+            }
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            transition={{ duration: 0.55, ease: "easeOut" }}
+          >
+            <div
+              aria-hidden="true"
+              className="absolute -right-20 -top-20 size-56 rounded-full bg-cyan-300/30 blur-3xl"
+            />
+            <div
+              aria-hidden="true"
+              className="absolute -bottom-24 left-10 size-56 rounded-full bg-violet-500/18 blur-3xl"
+            />
+
+            <div className="relative z-10">
+              <p className="mb-2 text-center text-sm font-semibold uppercase tracking-[0.24em] text-cyan-700">
+                EduPulse access
+              </p>
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.h1
+                  key={copy.title}
+                  className="text-center text-3xl font-bold tracking-normal text-slate-950"
+                  initial={
+                    reducedMotion ? false : { opacity: 0, y: 10, scale: 0.98 }
+                  }
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={
+                    reducedMotion
+                      ? undefined
+                      : { opacity: 0, y: -10, scale: 0.98 }
+                  }
+                  transition={{ duration: 0.2 }}
                 >
-                  {mode === "reset"
-                    ? "Send reset email"
-                    : mode === "signup"
-                      ? "Create account"
-                      : "Sign in"}
-                  <ArrowRight />
-                </Button>
-              </form>
+                  {copy.title}
+                </motion.h1>
+              </AnimatePresence>
+              <p className="mx-auto mt-2 max-w-xs text-center text-sm leading-6 text-slate-600">
+                Securely continue to your learning workspace.
+              </p>
 
-              {mode !== "reset" && (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {!isReset && (
+                <div className="mx-auto mt-5 grid h-10 max-w-[230px] grid-cols-2 rounded-full border border-slate-200 bg-slate-100/80 p-1 text-xs font-semibold text-slate-600 shadow-inner shadow-slate-300/40">
+                  {(["login", "signup"] as const).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      aria-pressed={authMode === item}
+                      className={cn(
+                        "relative isolate rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70",
+                        authMode === item && "text-white",
+                      )}
+                      onClick={() => setAuthMode(item)}
+                    >
+                      {authMode === item && (
+                        <motion.span
+                          layoutId="auth-mode-pill"
+                          className="absolute inset-0 -z-10 rounded-full bg-[linear-gradient(135deg,#0891b2,#4f46e5)] shadow-[0_14px_34px_-18px_rgba(14,165,233,0.9)]"
+                          transition={{
+                            type: "spring",
+                            stiffness: 420,
+                            damping: 34,
+                          }}
+                        />
+                      )}
+                      {item === "login" ? "Sign In" : "Sign Up"}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.form
+                  key={activeMode}
+                  action="/api/auth/admin-session"
+                  className="mt-6 space-y-4"
+                  method="post"
+                  onSubmit={onSubmit}
+                  initial={
+                    reducedMotion
+                      ? false
+                      : { opacity: 0, x: authMode === "signup" ? 18 : -18 }
+                  }
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={
+                    reducedMotion
+                      ? undefined
+                      : { opacity: 0, x: authMode === "signup" ? -18 : 18 }
+                  }
+                  transition={{ duration: 0.24, ease: "easeOut" }}
+                >
+                  <input
+                    type="hidden"
+                    name="deviceSessionId"
+                    value="form-session"
+                  />
+                  {activeMode === "signup" && (
+                    <AuthField icon={<UserRound className="size-4" />}>
+                      <Input
+                        aria-label="Full name"
+                        name="displayName"
+                        placeholder="Full name"
+                        value={displayName}
+                        onChange={(event) => setDisplayName(event.target.value)}
+                        className="h-12 rounded-2xl border-slate-200 bg-white/85 pl-11 text-slate-950 shadow-[0_16px_40px_-30px_rgba(14,165,233,0.65)] placeholder:text-slate-400 focus:border-cyan-500/70 focus:ring-cyan-500/20"
+                      />
+                    </AuthField>
+                  )}
+                  <AuthField icon={<Mail className="size-4" />}>
+                    <Input
+                      aria-label={
+                        isReset ? "Email address" : "Username or email"
+                      }
+                      name="email"
+                      type="email"
+                      placeholder={isReset ? "Email address" : "Username"}
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      required
+                      className="h-12 rounded-2xl border-slate-200 bg-white/85 pl-11 text-slate-950 shadow-[0_16px_40px_-30px_rgba(14,165,233,0.65)] placeholder:text-slate-400 focus:border-cyan-500/70 focus:ring-cyan-500/20"
+                    />
+                  </AuthField>
+                  {!isReset && (
+                    <AuthField icon={<LockKeyhole className="size-4" />}>
+                      <Input
+                        aria-label="Password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        required
+                        className="h-12 rounded-2xl border-slate-200 bg-white/85 pl-11 pr-12 text-slate-950 shadow-[0_16px_40px_-30px_rgba(14,165,233,0.65)] placeholder:text-slate-400 focus:border-cyan-500/70 focus:ring-cyan-500/20"
+                      />
+                      <button
+                        type="button"
+                        aria-label={
+                          showPassword ? "Hide password" : "Show password"
+                        }
+                        className="absolute right-3 top-1/2 z-10 grid size-8 -translate-y-1/2 place-items-center rounded-full text-slate-500 hover:bg-cyan-50 hover:text-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70"
+                        onClick={() => setShowPassword((value) => !value)}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="size-4" />
+                        ) : (
+                          <Eye className="size-4" />
+                        )}
+                      </button>
+                    </AuthField>
+                  )}
+                  <Button
+                    className="h-12 w-full rounded-2xl bg-[linear-gradient(135deg,#06b6d4,#4f46e5_58%,#a855f7)] text-white shadow-[0_24px_54px_-28px_rgba(14,165,233,0.9)] hover:shadow-[0_28px_64px_-30px_rgba(79,70,229,0.9)]"
+                    type="submit"
+                    disabled={busy}
+                  >
+                    {copy.submit}
+                    <ArrowRight />
+                  </Button>
+                </motion.form>
+              </AnimatePresence>
+
+              {!isReset && (
+                <div className="mt-4">
                   <Button
                     variant="outline"
+                    className="h-11 w-full rounded-2xl border-slate-200 bg-white/80 text-slate-800 hover:bg-cyan-50 hover:text-slate-950"
+                    disabled={busy}
                     onClick={async () => {
                       try {
                         setBusy(true);
@@ -236,6 +461,8 @@ export function AuthPanel({ mode }: { mode: "login" | "signup" | "reset" }) {
                   {demoMode && (
                     <Button
                       variant="secondary"
+                      className="mt-3 h-11 w-full rounded-2xl bg-cyan-600 text-white hover:bg-cyan-500"
+                      disabled={busy}
                       onClick={async () => {
                         try {
                           setBusy(true);
@@ -259,42 +486,35 @@ export function AuthPanel({ mode }: { mode: "login" | "signup" | "reset" }) {
                 </div>
               )}
 
-              <div className="mt-6 space-y-2 text-sm text-muted-foreground">
+              <div className="mt-5 space-y-3 text-sm text-slate-600">
                 {!configured && (
-                  <p className="rounded-2xl bg-amber-400/10 p-3 text-amber-700 dark:text-amber-300">
+                  <p className="rounded-2xl border border-amber-300/30 bg-amber-300/12 p-3 text-amber-100">
                     Email and social sign-in are not available right now.
                   </p>
                 )}
-                {mode === "login" && (
-                  <>
+                <div className="flex items-center justify-between gap-3">
+                  {activeMode === "login" ? (
                     <Link
                       href="/reset-password"
-                      className="block hover:text-foreground"
+                      className="hover:text-cyan-700"
                     >
-                      Forgot password?
+                      Forget Password
                     </Link>
-                    <Link
-                      href="/signup"
-                      className="block hover:text-foreground"
-                    >
-                      Need an account?
-                    </Link>
-                  </>
-                )}
-                {mode === "signup" && (
-                  <Link href="/login" className="block hover:text-foreground">
-                    Already have an account?
-                  </Link>
-                )}
-                {mode === "reset" && (
-                  <Link href="/login" className="block hover:text-foreground">
-                    Back to login
-                  </Link>
-                )}
+                  ) : (
+                    <span />
+                  )}
+                  <button
+                    type="button"
+                    className="font-medium text-cyan-700 underline-offset-4 hover:text-cyan-950 hover:underline"
+                    onClick={switchMode}
+                  >
+                    {copy.switchAction}
+                  </button>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        </section>
+            </div>
+          </motion.section>
+        </div>
       </main>
     </>
   );

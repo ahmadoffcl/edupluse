@@ -16,10 +16,13 @@ export type AuthUser = {
 };
 
 export type AuthSessionResult = {
+  uid?: string;
+  email?: string | null;
   role: Role;
   orgId: string;
   orgName: string;
   onboardingCompleted: boolean;
+  setupPending?: boolean;
 };
 
 export type NavItem = {
@@ -40,11 +43,25 @@ export type AssignmentStatus = "submitted" | "pending" | "graded" | "late";
 export type Assignment = {
   id: string;
   title: string;
+  classId?: string | null;
   className: string;
   subject: string;
   dueDate: string;
   status: AssignmentStatus;
   points: number;
+  instructions?: string | null;
+  submittedAt?: string | null;
+  feedback?: string | null;
+  submissionContent?: string | null;
+  submissionFilePath?: string | null;
+  submissionFileUrl?: string | null;
+  attachments?: Array<{
+    path: string;
+    name: string;
+    size: number;
+    mimeType: string;
+    signedUrl?: string | null;
+  }>;
   submittedBy?: number;
   totalStudents?: number;
   grade?: string;
@@ -61,9 +78,20 @@ export type Note = {
   id: string;
   title: string;
   subject: string;
+  classId?: string | null;
+  className?: string | null;
   updatedAt: string;
   downloads: number;
   type: "pdf" | "video" | "rich-note";
+  body?: string | null;
+  externalUrl?: string | null;
+  fileUrl?: string | null;
+  filePath?: string | null;
+  mimeType?: string | null;
+  originalFilename?: string | null;
+  ownerProfileId?: string | null;
+  ownedByStudent?: boolean;
+  visibility?: "private" | "class" | "organization";
 };
 
 export type LeaderboardEntry = {

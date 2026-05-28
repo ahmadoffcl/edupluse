@@ -19,6 +19,42 @@ type RiskSignal = {
 
 type DbRecord = Record<string, unknown>;
 
+export type UpcomingTask = {
+  id: string;
+  title: string;
+  kind: "assignment" | "event" | "exam" | "live";
+  dueAt: string;
+  className: string;
+  status: string;
+  href: string;
+};
+
+export type StudentClassRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  bannerUrl: string | null;
+  section: string | null;
+  teacherName: string | null;
+  assignmentCount: number;
+  resourceCount: number;
+  announcementCount: number;
+  classmates: Array<{
+    id: string;
+    name: string;
+    username: string | null;
+    email: string | null;
+  }>;
+  assignments: Assignment[];
+  resources: Note[];
+  announcements: Array<{
+    id: string;
+    title: string;
+    body: string;
+    publishedAt: string | null;
+  }>;
+};
+
 function asRows(value: unknown): DbRecord[] {
   return Array.isArray(value) ? (value as DbRecord[]) : [];
 }
@@ -31,12 +67,33 @@ function relation(row: DbRecord, key: string) {
   return undefined;
 }
 
+function recordValue(value: unknown): DbRecord {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as DbRecord)
+    : {};
+}
+
 function stringValue(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
 function numberValue(value: unknown, fallback = 0) {
   return typeof value === "number" ? value : fallback;
+}
+
+function isMissingColumn(error: unknown, column: string) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+
+  return (
+    candidate.code === "42703" ||
+    candidate.code === "PGRST204" ||
+    Boolean(
+      candidate.message?.includes(column) &&
+      (candidate.message.includes("schema cache") ||
+        candidate.message.includes("does not exist")),
+    )
+  );
 }
 
 export type DashboardData = {
@@ -48,6 +105,8 @@ export type DashboardData = {
   assignmentStatusChart: Array<{ name: string; value: number }>;
   schedule: ScheduleItem[];
   assignments: Assignment[];
+  upcomingTasks: UpcomingTask[];
+  classes: StudentClassRow[];
   notes: Note[];
   leaderboard: LeaderboardEntry[];
   messages: MessageThread[];
@@ -77,6 +136,8 @@ function emptyData(): DashboardData {
     assignmentStatusChart: [],
     schedule: [],
     assignments: [],
+    upcomingTasks: [],
+    classes: [],
     notes: [],
     leaderboard: [],
     messages: [],
@@ -96,8 +157,128 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   if (!session || !supabase) return emptyData();
 
+  const currentSession = session;
+  const db = supabase;
+
+  const { data: profile } = await db
+    .from("profiles")
+    .select("id")
+    .eq("firebase_uid", currentSession.uid)
+    .maybeSingle();
+  const profileId = stringValue((profile as DbRecord | null)?.id);
+  const isStudent = currentSession.role === "student";
+
+  const initialEnrollmentResult =
+    isStudent && profileId
+      ? await db
+          .from("enrollments")
+          .select(
+            "class_id,classes!enrollments_class_id_fkey(id,name,description,banner_url,section,teacher_id,profiles!classes_teacher_id_fkey(display_name))",
+          )
+          .eq("org_id", currentSession.orgId)
+          .eq("student_id", profileId)
+          .limit(1000)
+      : { data: [], error: null };
+
+  let enrollmentRows = !initialEnrollmentResult.error
+    ? ((initialEnrollmentResult.data ?? []) as unknown as DbRecord[])
+    : [];
+
+  if (
+    initialEnrollmentResult.error &&
+    (isMissingColumn(initialEnrollmentResult.error, "description") ||
+      isMissingColumn(initialEnrollmentResult.error, "banner_url"))
+  ) {
+    const fallbackEnrollmentResult =
+      isStudent && profileId
+        ? await db
+            .from("enrollments")
+            .select(
+              "class_id,classes!enrollments_class_id_fkey(id,name,section,teacher_id,profiles!classes_teacher_id_fkey(display_name))",
+            )
+            .eq("org_id", currentSession.orgId)
+            .eq("student_id", profileId)
+            .limit(1000)
+        : { data: [], error: null };
+
+    if (!fallbackEnrollmentResult.error) {
+      enrollmentRows = (fallbackEnrollmentResult.data ??
+        []) as unknown as DbRecord[];
+    }
+  }
+
+  const enrolledClassIds = enrollmentRows
+    .map((row) => stringValue(row.class_id))
+    .filter(Boolean);
+
+  let classmateRows: DbRecord[] = [];
+  if (isStudent && enrolledClassIds.length > 0) {
+    const classmatesResult = await db
+      .from("enrollments")
+      .select(
+        "class_id,profiles!enrollments_student_id_fkey(id,display_name,username,email)",
+      )
+      .eq("org_id", currentSession.orgId)
+      .in("class_id", enrolledClassIds)
+      .limit(1000);
+
+    if (!classmatesResult.error) {
+      classmateRows = (classmatesResult.data ?? []) as unknown as DbRecord[];
+    } else if (isMissingColumn(classmatesResult.error, "username")) {
+      const fallbackClassmatesResult = await db
+        .from("enrollments")
+        .select(
+          "class_id,profiles!enrollments_student_id_fkey(id,display_name,email)",
+        )
+        .eq("org_id", currentSession.orgId)
+        .in("class_id", enrolledClassIds)
+        .limit(1000);
+
+      if (!fallbackClassmatesResult.error) {
+        classmateRows = (fallbackClassmatesResult.data ??
+          []) as unknown as DbRecord[];
+      }
+    }
+  }
+
+  async function loadAssignments(select: string) {
+    if (isStudent && enrolledClassIds.length === 0) {
+      return { data: [], error: null };
+    }
+
+    const query = db
+      .from("assignments")
+      .select(select)
+      .eq("org_id", currentSession.orgId)
+      .order("due_at", { ascending: true })
+      .limit(1000);
+
+    return isStudent
+      ? await query.in("class_id", enrolledClassIds)
+      : await query;
+  }
+
+  let assignmentsResult = await loadAssignments(
+    "id,title,instructions,due_at,status,points,attachments,classes(id,name),subjects(name),submissions(status,score,submitted_at,file_path,content,feedback,student_id)",
+  );
+
+  if (
+    assignmentsResult.error &&
+    isMissingColumn(assignmentsResult.error, "attachments")
+  ) {
+    assignmentsResult = await loadAssignments(
+      "id,title,instructions,due_at,status,points,classes(id,name),subjects(name),submissions(status,score,submitted_at,file_path,content,feedback,student_id)",
+    );
+  }
+
+  const notificationsQuery = db
+    .from("notifications")
+    .select("title,body,kind,created_at")
+    .eq("org_id", currentSession.orgId)
+    .order("created_at", { ascending: false })
+    .limit(8);
+
   const [
-    assignmentsResult,
     resourcesResult,
     attendanceResult,
     eventsResult,
@@ -105,57 +286,58 @@ export async function getDashboardData(): Promise<DashboardData> {
     gamificationResult,
     notificationsResult,
     membershipsResult,
+    announcementsResult,
   ] = await Promise.all([
-    supabase
-      .from("assignments")
-      .select(
-        "id,title,due_at,status,points,classes(name),subjects(name),submissions(status,score)",
-      )
-      .eq("org_id", session.orgId)
-      .order("due_at", { ascending: true })
-      .limit(12),
-    supabase
+    db
       .from("resources")
-      .select("id,title,type,created_at,subjects(name)")
-      .eq("org_id", session.orgId)
+      .select(
+        "id,title,type,body,file_path,external_url,mime_type,original_filename,created_at,class_id,metadata,subjects(name),classes(name)",
+      )
+      .eq("org_id", currentSession.orgId)
+      .is("archived_at", null)
       .order("created_at", { ascending: false })
-      .limit(8),
-    supabase
+      .limit(1000),
+    db
       .from("attendance_records")
-      .select("status,attended_on,classes(name),profiles(display_name)")
-      .eq("org_id", session.orgId)
+      .select(
+        "status,attended_on,classes(name),profiles!attendance_records_student_id_fkey(display_name)",
+      )
+      .eq("org_id", currentSession.orgId)
       .order("attended_on", { ascending: false })
       .limit(200),
-    supabase
+    db
       .from("calendar_events")
-      .select("id,title,kind,starts_at,classes(name)")
-      .eq("org_id", session.orgId)
+      .select("id,title,kind,starts_at,class_id,classes(name)")
+      .eq("org_id", currentSession.orgId)
       .order("starts_at", { ascending: true })
-      .limit(8),
-    supabase
+      .limit(1000),
+    db
       .from("messages")
       .select(
         "id,body,created_at,message_threads(title,kind),profiles(display_name)",
       )
-      .eq("org_id", session.orgId)
+      .eq("org_id", currentSession.orgId)
       .order("created_at", { ascending: false })
       .limit(8),
-    supabase
+    db
       .from("gamification_events")
       .select("xp,created_at,profiles(display_name)")
-      .eq("org_id", session.orgId)
+      .eq("org_id", currentSession.orgId)
       .limit(500),
-    supabase
-      .from("notifications")
-      .select("title,body,kind,created_at")
-      .eq("org_id", session.orgId)
-      .order("created_at", { ascending: false })
-      .limit(8),
-    supabase
+    profileId
+      ? notificationsQuery.eq("recipient_id", profileId)
+      : notificationsQuery,
+    db
       .from("memberships")
       .select("profile_id,status")
-      .eq("org_id", session.orgId)
+      .eq("org_id", currentSession.orgId)
       .eq("status", "active")
+      .limit(1000),
+    db
+      .from("announcements")
+      .select("id,title,body,published_at,class_id,classes(name)")
+      .eq("org_id", currentSession.orgId)
+      .order("created_at", { ascending: false })
       .limit(1000),
   ]);
 
@@ -167,18 +349,58 @@ export async function getDashboardData(): Promise<DashboardData> {
     messagesResult.error ||
     gamificationResult.error ||
     notificationsResult.error ||
-    membershipsResult.error
+    membershipsResult.error ||
+    announcementsResult.error
   ) {
     return emptyData();
   }
 
-  const assignmentRows = (assignmentsResult.data ?? []) as DbRecord[];
+  const assignmentRows = (assignmentsResult.data ??
+    []) as unknown as DbRecord[];
   const attendanceRows = (attendanceResult.data ?? []) as DbRecord[];
   const eventRows = (eventsResult.data ?? []) as DbRecord[];
   const resourceRows = (resourcesResult.data ?? []) as DbRecord[];
   const messageRows = (messagesResult.data ?? []) as DbRecord[];
   const gamificationRows = (gamificationResult.data ?? []) as DbRecord[];
   const notificationRows = (notificationsResult.data ?? []) as DbRecord[];
+  const announcementRows = (announcementsResult.data ?? []) as DbRecord[];
+  const attachmentUrlMap = new Map<string, string>();
+  await Promise.all(
+    assignmentRows.flatMap((row) =>
+      asRows(row.attachments).map(async (attachment) => {
+        const path = stringValue(attachment.path);
+        if (!path) return;
+        const { data } = await db.storage
+          .from("resources")
+          .createSignedUrl(path, 60 * 10);
+        if (data?.signedUrl) attachmentUrlMap.set(path, data.signedUrl);
+      }),
+    ),
+  );
+  const submissionUrlMap = new Map<string, string>();
+  await Promise.all(
+    assignmentRows.flatMap((row) =>
+      asRows(row.submissions).map(async (submission) => {
+        const path = stringValue(submission.file_path);
+        if (!path) return;
+        const { data } = await db.storage
+          .from("submissions")
+          .createSignedUrl(path, 60 * 10);
+        if (data?.signedUrl) submissionUrlMap.set(path, data.signedUrl);
+      }),
+    ),
+  );
+  const resourceUrlMap = new Map<string, string>();
+  await Promise.all(
+    resourceRows.map(async (row) => {
+      const path = stringValue(row.file_path);
+      if (!path) return;
+      const { data } = await db.storage
+        .from("resources")
+        .createSignedUrl(path, 60 * 10);
+      if (data?.signedUrl) resourceUrlMap.set(path, data.signedUrl);
+    }),
+  );
 
   const submitted = assignmentRows.reduce((total, row) => {
     const submissions = asRows(row.submissions);
@@ -227,38 +449,116 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const assignments: Assignment[] = assignmentRows.map((row) => {
     const submissions = asRows(row.submissions);
+    const ownSubmissions =
+      isStudent && profileId
+        ? submissions.filter(
+            (submission) => stringValue(submission.student_id) === profileId,
+          )
+        : submissions;
+    const ownSubmission = ownSubmissions[0];
     const subject = relation(row, "subjects");
     const classRecord = relation(row, "classes");
+    const dueDate = stringValue(row.due_at, new Date().toISOString());
+    const hasOwnSubmission = Boolean(ownSubmission);
+    const ownStatus = stringValue(ownSubmission?.status);
+    const submissionFilePath = stringValue(ownSubmission?.file_path) || null;
 
     return {
       id: stringValue(row.id, crypto.randomUUID()),
       title: stringValue(row.title, "Untitled assignment"),
+      classId: stringValue(classRecord?.id) || null,
       className: stringValue(classRecord?.name, "Class"),
       subject: stringValue(subject?.name, "Subject"),
-      dueDate: stringValue(row.due_at, new Date().toISOString()),
-      status: submissions.some((submission) => submission.status === "graded")
-        ? "graded"
-        : submissions.length
-          ? "submitted"
-          : "pending",
+      dueDate,
+      status:
+        ownStatus === "graded"
+          ? "graded"
+          : ownStatus === "late"
+            ? "late"
+            : hasOwnSubmission
+              ? "submitted"
+              : new Date(dueDate).getTime() < Date.now()
+                ? "late"
+                : "pending",
       points: numberValue(row.points),
-      submittedBy: submissions.length,
-      totalStudents: Math.max(profileCount, submissions.length),
+      instructions: stringValue(row.instructions) || null,
+      attachments: asRows(row.attachments).map((attachment) => ({
+        path: stringValue(attachment.path),
+        name: stringValue(attachment.name, "Attachment"),
+        size: numberValue(attachment.size),
+        mimeType: stringValue(attachment.mimeType),
+        signedUrl: attachmentUrlMap.get(stringValue(attachment.path)) ?? null,
+      })),
+      submittedAt: stringValue(ownSubmission?.submitted_at) || null,
+      feedback: stringValue(ownSubmission?.feedback) || null,
+      submissionContent: stringValue(ownSubmission?.content) || null,
+      submissionFilePath,
+      submissionFileUrl: submissionFilePath
+        ? (submissionUrlMap.get(submissionFilePath) ?? null)
+        : null,
+      submittedBy: isStudent ? (hasOwnSubmission ? 1 : 0) : submissions.length,
+      totalStudents: isStudent ? 1 : Math.max(profileCount, submissions.length),
       grade:
-        typeof submissions[0]?.score === "number"
-          ? `${submissions[0].score}%`
+        typeof ownSubmission?.score === "number"
+          ? `${ownSubmission.score}%`
           : undefined,
     };
   });
 
-  const notes: Note[] = resourceRows.map((row) => {
+  const visibleResourceRows = isStudent
+    ? resourceRows.filter((row) => {
+        const classId = stringValue(row.class_id);
+        if (classId) return enrolledClassIds.includes(classId);
+
+        const metadata = recordValue(row.metadata);
+        const ownerProfileId = stringValue(
+          metadata.owner_profile_id ?? metadata.ownerProfileId,
+        );
+
+        return !ownerProfileId || ownerProfileId === profileId;
+      })
+    : resourceRows;
+  const visibleAnnouncementRows = isStudent
+    ? announcementRows.filter((row) => {
+        const classId = stringValue(row.class_id);
+        return !classId || enrolledClassIds.includes(classId);
+      })
+    : announcementRows;
+  const visibleEventRows = isStudent
+    ? eventRows.filter((row) => {
+        const classId = stringValue(row.class_id);
+        return !classId || enrolledClassIds.includes(classId);
+      })
+    : eventRows;
+
+  function resourceToNote(row: DbRecord): Note {
     const subject = relation(row, "subjects");
+    const classRecord = relation(row, "classes");
+    const metadata = recordValue(row.metadata);
+    const ownerProfileId =
+      stringValue(metadata.owner_profile_id ?? metadata.ownerProfileId) || null;
+    const visibility = stringValue(metadata.visibility);
+
     return {
       id: stringValue(row.id, crypto.randomUUID()),
       title: stringValue(row.title, "Untitled resource"),
       subject: stringValue(subject?.name, "Resource"),
+      classId: stringValue(row.class_id) || null,
+      className: stringValue(classRecord?.name) || null,
       updatedAt: stringValue(row.created_at, new Date().toISOString()),
       downloads: 0,
+      body: stringValue(row.body) || null,
+      externalUrl: stringValue(row.external_url) || null,
+      fileUrl: resourceUrlMap.get(stringValue(row.file_path)) ?? null,
+      filePath: stringValue(row.file_path) || null,
+      mimeType: stringValue(row.mime_type) || null,
+      originalFilename: stringValue(row.original_filename) || null,
+      ownerProfileId,
+      ownedByStudent: Boolean(profileId && ownerProfileId === profileId),
+      visibility:
+        visibility === "class" || visibility === "organization"
+          ? visibility
+          : "private",
       type:
         row.type === "video"
           ? "video"
@@ -266,9 +566,65 @@ export async function getDashboardData(): Promise<DashboardData> {
             ? "pdf"
             : "rich-note",
     };
-  });
+  }
 
-  const schedule: ScheduleItem[] = eventRows.map((row) => {
+  const notes: Note[] = visibleResourceRows.map(resourceToNote);
+
+  const classes: StudentClassRow[] = enrollmentRows
+    .map((row) => {
+      const classRecord = relation(row, "classes");
+      const classId = stringValue(classRecord?.id) || stringValue(row.class_id);
+      if (!classId) return null;
+
+      const teacher = classRecord ? relation(classRecord, "profiles") : null;
+      const classResources = visibleResourceRows.filter(
+        (resource) => stringValue(resource.class_id) === classId,
+      );
+      const classAnnouncements = visibleAnnouncementRows.filter(
+        (announcement) => stringValue(announcement.class_id) === classId,
+      );
+      const classAssignments = assignments.filter(
+        (assignment) => assignment.classId === classId,
+      );
+      const classmates = classmateRows
+        .filter((classmate) => stringValue(classmate.class_id) === classId)
+        .map((classmate) => {
+          const person = relation(classmate, "profiles");
+          return {
+            id: stringValue(person?.id),
+            name: stringValue(person?.display_name, "Student"),
+            username: stringValue(person?.username) || null,
+            email: stringValue(person?.email) || null,
+          };
+        })
+        .filter((classmate) => Boolean(classmate.id));
+
+      return {
+        id: classId,
+        name: stringValue(classRecord?.name, "Class"),
+        description: stringValue(classRecord?.description) || null,
+        bannerUrl: stringValue(classRecord?.banner_url) || null,
+        section: stringValue(classRecord?.section) || null,
+        teacherName: stringValue(teacher?.display_name) || null,
+        assignmentCount: classAssignments.length,
+        resourceCount: classResources.length,
+        announcementCount: classAnnouncements.length,
+        classmates,
+        assignments: classAssignments,
+        resources: classResources.map(resourceToNote),
+        announcements: classAnnouncements.map((announcement) => ({
+          id: stringValue(announcement.id, crypto.randomUUID()),
+          title: stringValue(announcement.title, "Announcement"),
+          body: stringValue(announcement.body),
+          publishedAt: stringValue(announcement.published_at) || null,
+        })),
+      } satisfies StudentClassRow;
+    })
+    .filter((classRecord): classRecord is StudentClassRow =>
+      Boolean(classRecord),
+    );
+
+  const schedule: ScheduleItem[] = visibleEventRows.map((row) => {
     const date = new Date(stringValue(row.starts_at, new Date().toISOString()));
     const classRecord = relation(row, "classes");
 
@@ -289,6 +645,46 @@ export async function getDashboardData(): Promise<DashboardData> {
               : "study",
     };
   });
+
+  const now = Date.now();
+  const upcomingTasks: UpcomingTask[] = [
+    ...assignments
+      .filter(
+        (assignment) =>
+          assignment.status === "pending" || assignment.status === "late",
+      )
+      .map((assignment) => ({
+        id: assignment.id,
+        title: assignment.title,
+        kind: "assignment" as const,
+        dueAt: assignment.dueDate,
+        className: assignment.className,
+        status: assignment.status,
+        href: `/student/assignments/${assignment.id}`,
+      })),
+    ...visibleEventRows
+      .map((row) => {
+        const classRecord = relation(row, "classes");
+        const kind = stringValue(row.kind, "event");
+        return {
+          id: stringValue(row.id, crypto.randomUUID()),
+          title: stringValue(row.title, "Scheduled event"),
+          kind:
+            kind === "exam"
+              ? ("exam" as const)
+              : kind === "live"
+                ? ("live" as const)
+                : ("event" as const),
+          dueAt: stringValue(row.starts_at, new Date().toISOString()),
+          className: stringValue(classRecord?.name, "Schedule"),
+          status: kind,
+          href: "/student/calendar",
+        };
+      })
+      .filter((task) => new Date(task.dueAt).getTime() >= now),
+  ]
+    .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
+    .slice(0, 1000);
 
   const messages: MessageThread[] = messageRows.map((row) => {
     const thread = relation(row, "message_threads");
@@ -399,6 +795,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     assignmentStatusChart,
     schedule,
     assignments,
+    upcomingTasks,
+    classes,
     notes,
     leaderboard,
     messages,

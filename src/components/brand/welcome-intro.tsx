@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "@/components/brand/brand-logo";
 
@@ -9,16 +10,23 @@ const introStorageKey = "edupulse.welcome.seen";
 const introText = "Welcome to your EduPulse workspace";
 
 export function WelcomeIntro() {
+  const pathname = usePathname();
   const [state, setState] = useState<IntroState>("checking");
   const [typedText, setTypedText] = useState("");
+  const isAuthPage =
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname === "/reset-password";
 
   useEffect(() => {
+    if (isAuthPage) return;
+
     const alreadySeen = window.sessionStorage.getItem(introStorageKey);
     if (alreadySeen === "true") return;
 
     const frame = window.requestAnimationFrame(() => setState("typing"));
     return () => window.cancelAnimationFrame(frame);
-  }, []);
+  }, [isAuthPage]);
 
   useEffect(() => {
     if (state !== "typing") return;
@@ -68,7 +76,7 @@ export function WelcomeIntro() {
     return () => window.clearTimeout(timeout);
   }, [state]);
 
-  if (state === "checking" || state === "hidden") return null;
+  if (isAuthPage || state === "checking" || state === "hidden") return null;
 
   return (
     <div

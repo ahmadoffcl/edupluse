@@ -1,44 +1,29 @@
 import {
-  EngagementChart,
   CompletionDonut,
+  EngagementChart,
 } from "@/components/dashboard/charts";
-import { FeaturePage } from "@/components/dashboard/feature-page";
-import { getDashboardData } from "@/lib/dashboard/server-data";
+import { PageHeader } from "@/components/dashboard/page-header";
+import {
+  StudentPerformancePanel,
+  TeacherMetricStrip,
+} from "@/components/teacher/teacher-workflow-panels";
+import { getTeacherWorkflowData } from "@/lib/dashboard/teacher-workflow";
 
 export default async function TeacherAnalyticsPage() {
-  const data = await getDashboardData();
+  const workflowData = await getTeacherWorkflowData();
 
   return (
     <div className="space-y-6">
-      <FeaturePage
+      <PageHeader
         eyebrow="Student insights"
-        title="Detect weak students and compare class performance."
-        description="Engagement analytics, performance comparison, attendance monitoring, and intervention signals."
-        action="Export insights"
-        items={[
-          {
-            title: "At-risk students",
-            meta: "Low engagement + missed work",
-            stat: "11",
-            tone: "warning",
-          },
-          {
-            title: "High momentum",
-            meta: "Improving weekly",
-            stat: "28",
-            tone: "success",
-          },
-          {
-            title: "Feedback speed",
-            meta: "Median return time",
-            stat: "18h",
-            tone: "info",
-          },
-        ]}
+        title="Detect weak students and compare momentum using real signals."
+        description="Performance is weighted toward engagement, submissions, XP, recent activity, missing work, late work, and grade feedback."
       />
+      <TeacherMetricStrip data={workflowData} />
+      <StudentPerformancePanel rows={workflowData.performance} />
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-        <EngagementChart data={data.engagementChart} />
-        <CompletionDonut data={data.assignmentStatusChart} />
+        <EngagementChart data={workflowData.engagementChart} />
+        <CompletionDonut data={workflowData.assignmentStatusChart} />
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   ActivityPanel,
@@ -36,7 +37,11 @@ export default async function AdminDashboardPage() {
         eyebrow="Admin command center"
         title="Enterprise-grade control over every institute workflow."
         description="Manage teachers, students, classes, permissions, content moderation, analytics, announcements, reports, and platform configuration."
-        action={<Button variant="premium">Create institute invite</Button>}
+        action={
+          <Button asChild variant="premium">
+            <Link href="/admin/invites">Create institute invite</Link>
+          </Button>
+        }
       />
       <MetricGrid metrics={data.metrics} />
       <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_380px]">

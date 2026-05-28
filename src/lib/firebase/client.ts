@@ -2,8 +2,10 @@
 
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import {
+  browserLocalPersistence,
   getAuth,
   GoogleAuthProvider,
+  setPersistence,
   type Auth,
   type User,
 } from "firebase/auth";
@@ -19,6 +21,7 @@ type FirebasePublicConfig = {
 };
 
 let cachedAuth: Auth | null | undefined;
+let persistencePromise: Promise<void> | null = null;
 
 function getFirebaseConfig(): FirebasePublicConfig | null {
   const config = {
@@ -58,7 +61,22 @@ export function getFirebaseAuth() {
   if (cachedAuth !== undefined) return cachedAuth;
   const app = getFirebaseApp();
   cachedAuth = app ? getAuth(app) : null;
+  if (cachedAuth && !persistencePromise) {
+    persistencePromise = setPersistence(cachedAuth, browserLocalPersistence);
+  }
   return cachedAuth;
+}
+
+export async function getPersistentFirebaseAuth() {
+  const auth = getFirebaseAuth();
+  if (!auth) return null;
+
+  if (!persistencePromise) {
+    persistencePromise = setPersistence(auth, browserLocalPersistence);
+  }
+
+  await persistencePromise;
+  return auth;
 }
 
 export function getGoogleProvider() {

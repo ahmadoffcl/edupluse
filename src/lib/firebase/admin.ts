@@ -5,7 +5,7 @@ import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { isDemoModeEnabled } from "@/lib/config";
 
-let app: App | null | undefined;
+let app: App | undefined;
 
 type FirebaseAdminCredential = {
   projectId?: string;
@@ -41,9 +41,14 @@ function getFirebaseAdminCredential(): FirebaseAdminCredential | null {
   }
 
   if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-    return credentialFromServiceAccountJson(
-      readFileSync(process.env.FIREBASE_SERVICE_ACCOUNT_PATH, "utf8"),
-    );
+    try {
+      return credentialFromServiceAccountJson(
+        readFileSync(process.env.FIREBASE_SERVICE_ACCOUNT_PATH, "utf8"),
+      );
+    } catch {
+      // Keep auth recoverable if the local file is moved; env credentials below
+      // can still be used without restarting the dev server.
+    }
   }
 
   return {
@@ -54,7 +59,7 @@ function getFirebaseAdminCredential(): FirebaseAdminCredential | null {
 }
 
 function getAdminApp() {
-  if (app !== undefined) return app;
+  if (app) return app;
 
   const credential = getFirebaseAdminCredential();
 
@@ -63,8 +68,7 @@ function getAdminApp() {
     !credential.clientEmail ||
     !credential.privateKey
   ) {
-    app = null;
-    return app;
+    return null;
   }
 
   app =
@@ -78,6 +82,11 @@ function getAdminApp() {
     });
 
   return app;
+}
+
+export function getFirebaseAdminAuth() {
+  const adminApp = getAdminApp();
+  return adminApp ? getAuth(adminApp) : null;
 }
 
 export async function verifyFirebaseBearerToken(request: Request) {

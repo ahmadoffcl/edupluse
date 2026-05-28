@@ -17,8 +17,10 @@ import { Textarea } from "@/components/ui/input";
 
 export function AiPanel({
   mode = "study",
+  classNameContext = "Current class",
 }: {
   mode?: "study" | "summary" | "quiz";
+  classNameContext?: string;
 }) {
   const { user, token } = useAuth();
   const [prompt, setPrompt] = useState(
@@ -48,7 +50,7 @@ export function AiPanel({
         mode === "quiz"
           ? {
               topic: prompt,
-              className: "Grade 10-A",
+              className: classNameContext,
               difficulty: "medium",
               orgId: user.orgId,
             }

@@ -1,18 +1,18 @@
-import { AssignmentsPanel } from "@/components/dashboard/content-blocks";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { StudentAssignmentsPanel } from "@/components/student/student-assignments-panel";
 import { getDashboardData } from "@/lib/dashboard/server-data";
 
 export default async function StudentAssignmentsPage() {
   const data = await getDashboardData();
 
   return (
-    <div>
+    <div className="space-y-4 sm:space-y-5">
       <PageHeader
         eyebrow="Assignments"
-        title="Submit work, track feedback, and protect your streak."
-        description="Deadlines, file uploads, submission history, teacher comments, marks, and grading states are organized here."
+        title="Classwork that is easy to act on."
+        description="Search every assignment, upload your work, review teacher files, and track feedback without digging through long lists."
       />
-      <AssignmentsPanel items={data.assignments} />
+      <StudentAssignmentsPanel assignments={data.assignments} />
     </div>
   );
 }

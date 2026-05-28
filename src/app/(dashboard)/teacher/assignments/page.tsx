@@ -1,39 +1,26 @@
-import { AssignmentsPanel } from "@/components/dashboard/content-blocks";
-import { FeaturePage } from "@/components/dashboard/feature-page";
-import { getDashboardData } from "@/lib/dashboard/server-data";
+import { PageHeader } from "@/components/dashboard/page-header";
+import {
+  AssignmentManagerPanel,
+  AssignmentCreatorPanel,
+  GradingQueuePanel,
+  TeacherMetricStrip,
+} from "@/components/teacher/teacher-workflow-panels";
+import { getTeacherWorkflowData } from "@/lib/dashboard/teacher-workflow";
 
 export default async function TeacherAssignmentsPage() {
-  const data = await getDashboardData();
+  const workflowData = await getTeacherWorkflowData();
 
   return (
-    <div className="space-y-6">
-      <FeaturePage
+    <div className="space-y-4 sm:space-y-6">
+      <PageHeader
         eyebrow="Assignment manager"
-        title="Create, schedule, grade, and return work."
-        description="Rich instructions, due dates, file submissions, rubric grading, feedback, and completion tracking."
-        action="Create assignment"
-        items={[
-          {
-            title: "Needs grading",
-            meta: "Physics and English",
-            stat: "28",
-            tone: "warning",
-          },
-          {
-            title: "Published",
-            meta: "Active assignments",
-            stat: "12",
-            tone: "info",
-          },
-          {
-            title: "Returned",
-            meta: "This week",
-            stat: "156",
-            tone: "success",
-          },
-        ]}
+        title="Create, publish, and grade classwork."
+        description="Manage due dates, submissions, feedback, and grading queues from live classroom records."
       />
-      <AssignmentsPanel teacher items={data.assignments} />
+      <TeacherMetricStrip data={workflowData} />
+      <AssignmentCreatorPanel data={workflowData} />
+      <AssignmentManagerPanel data={workflowData} />
+      <GradingQueuePanel data={workflowData} />
     </div>
   );
 }
