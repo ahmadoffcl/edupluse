@@ -19,6 +19,7 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  type User as FirebaseAuthUser,
   updateProfile,
 } from "firebase/auth";
 import { toast } from "sonner";
@@ -52,6 +53,7 @@ type AuthContextValue = {
   loginWithGoogle: () => Promise<AuthSessionResult>;
   loginWithDemo: (role: Role) => Promise<AuthSessionResult>;
   resetPassword: (email: string) => Promise<void>;
+  repairSession: () => Promise<AuthSessionResult | null>;
   logout: () => Promise<void>;
   setRole: (role: Role) => Promise<void>;
   updateUserProfile: (updates: {
@@ -89,6 +91,27 @@ function createDeviceSessionId() {
   const id = crypto.randomUUID();
   window.localStorage.setItem("lumina.device.session", id);
   return id;
+}
+
+async function waitForFirebaseUser(timeoutMs = 3_500) {
+  const auth = await getPersistentFirebaseAuth();
+  if (!auth) return null;
+  if (auth.currentUser) return auth.currentUser;
+
+  return new Promise<FirebaseAuthUser | null>((resolve) => {
+    let settled = false;
+    let timeout: number;
+    let unsubscribe = () => {};
+    const finish = (firebaseUser: FirebaseAuthUser | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      unsubscribe();
+      resolve(firebaseUser);
+    };
+    timeout = window.setTimeout(() => finish(auth.currentUser), timeoutMs);
+    unsubscribe = onAuthStateChanged(auth, finish);
+  });
 }
 
 function userFromDemoRole(role: Role): AuthUser {
@@ -608,6 +631,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     toast.success("Password reset email sent");
   }, []);
 
+  const repairSession = useCallback(async () => {
+    const firebaseUser = await waitForFirebaseUser();
+    if (!firebaseUser) return null;
+
+    const displayName =
+      firebaseUser.displayName ??
+      firebaseUser.email?.split("@")[0] ??
+      "EduPulse user";
+    let session: Awaited<ReturnType<typeof createServerSession>>;
+
+    try {
+      session = await createServerSession(
+        undefined,
+        await firebaseUser.getIdToken(false),
+        {
+          displayName,
+          email: firebaseUser.email,
+          allowSelfSignup: true,
+        },
+      );
+    } catch {
+      session = await createServerSession(
+        undefined,
+        await firebaseUser.getIdToken(true),
+        {
+          displayName,
+          email: firebaseUser.email,
+          allowSelfSignup: true,
+        },
+      );
+    }
+
+    if (session.onboardingCompleted) {
+      markOnboardingComplete(session.role, [
+        firebaseUser.uid,
+        firebaseUser.email,
+      ]);
+    }
+
+    window.localStorage.setItem("lumina.active.role", session.role);
+    const nextUser = {
+      uid: firebaseUser.uid,
+      email: firebaseUser.email,
+      displayName,
+      photoURL: session.photoURL ?? firebaseUser.photoURL,
+      emailVerified: firebaseUser.emailVerified,
+      role: session.role,
+      orgId: session.orgId,
+      orgName: session.orgName,
+      deviceSessionId: createDeviceSessionId(),
+      onboardingCompleted:
+        session.onboardingCompleted ||
+        hasCompletedOnboarding(session.role, [
+          firebaseUser.uid,
+          firebaseUser.email,
+        ]),
+    };
+
+    setUser(nextUser);
+
+    return {
+      ...session,
+      uid: firebaseUser.uid,
+      email: firebaseUser.email,
+      onboardingCompleted: nextUser.onboardingCompleted,
+    };
+  }, [createServerSession]);
+
   const updateUserProfile = useCallback(
     (updates: { displayName?: string; photoURL?: string | null }) => {
       setUser((current) => (current ? { ...current, ...updates } : current));
@@ -644,6 +735,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loginWithGoogle,
       loginWithDemo,
       resetPassword,
+      repairSession,
       logout,
       setRole,
       updateUserProfile,
@@ -656,6 +748,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loginWithEmail,
       loginWithGoogle,
       logout,
+      repairSession,
       resetPassword,
       setRole,
       signUpWithEmail,
