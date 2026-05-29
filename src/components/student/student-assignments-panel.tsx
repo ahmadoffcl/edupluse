@@ -98,7 +98,7 @@ export function StudentAssignmentsPanel({
 
       {assignments.length > 0 ? (
         <Card className="sticky top-3 z-10 border-border/70 bg-card/88 backdrop-blur-xl lg:top-24">
-          <CardContent className="grid gap-3 p-3 lg:grid-cols-[1fr_auto] lg:items-center">
+          <CardContent className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
             <div className="relative">
               <Search className="pointer-events-none absolute left-4 top-3.5 size-4 text-muted-foreground" />
               <Input
@@ -108,26 +108,31 @@ export function StudentAssignmentsPanel({
                 className="pl-11"
               />
             </div>
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
-              {statusFilters.map((filter) => (
-                <button
-                  key={filter.value}
-                  type="button"
-                  onClick={() => setStatus(filter.value)}
-                  className={cn(
-                    "inline-flex min-w-fit items-center rounded-full px-4 py-2 text-sm font-semibold transition",
-                    status === filter.value
-                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-                  )}
+            <div className="min-w-0">
+              <div className="-mx-1 flex max-w-full snap-x gap-2 overflow-x-auto px-1 pb-1 xl:flex-wrap xl:justify-end xl:overflow-visible xl:pb-0">
+                {statusFilters.map((filter) => (
+                  <button
+                    key={filter.value}
+                    type="button"
+                    onClick={() => setStatus(filter.value)}
+                    className={cn(
+                      "inline-flex h-9 shrink-0 snap-start items-center rounded-full px-4 text-sm font-semibold transition",
+                      status === filter.value
+                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+                    )}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+                <Badge
+                  variant="secondary"
+                  className="h-9 shrink-0 snap-start rounded-full px-4"
                 >
-                  {filter.label}
-                </button>
-              ))}
-              <Badge variant="secondary" className="min-w-fit">
-                {filteredAssignments.length} result
-                {filteredAssignments.length === 1 ? "" : "s"}
-              </Badge>
+                  {filteredAssignments.length} result
+                  {filteredAssignments.length === 1 ? "" : "s"}
+                </Badge>
+              </div>
             </div>
           </CardContent>
         </Card>

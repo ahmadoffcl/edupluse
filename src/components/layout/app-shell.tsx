@@ -447,7 +447,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="shrink-0 border-t border-border pt-3">
+        <div className="shrink-0 border-t border-border pt-3 lg:hidden">
           <Link
             href={`/${user.role === "super_admin" ? "admin" : user.role}/settings`}
             onClick={(event) => {
@@ -457,7 +457,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             }}
             className={cn(
-              "mb-2 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden",
+              "mb-2 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
             <ChevronRight className="size-4" />

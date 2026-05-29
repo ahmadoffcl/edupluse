@@ -81,9 +81,13 @@ function statusVariant(status: LearningMission["status"]) {
 }
 
 function sourceTone(mission: LearningMission) {
-  if (mission.priority === "urgent") return "border-red-400/25 bg-red-500/8";
-  if (mission.priority === "high") return "border-amber-400/25 bg-amber-500/8";
-  return "border-border bg-background/62";
+  if (mission.priority === "urgent") {
+    return "border-red-400/25 bg-red-500/8 dark:bg-red-500/10";
+  }
+  if (mission.priority === "high") {
+    return "border-amber-400/25 bg-amber-500/8 dark:bg-amber-500/10";
+  }
+  return "border-border bg-card/80 dark:bg-white/5";
 }
 
 function MissionCoach({
@@ -238,7 +242,7 @@ function MissionCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, delay: index * 0.025 }}
       className={cn(
-        "rounded-[1.35rem] border p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl sm:p-4",
+        "group rounded-[1.55rem] border p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl sm:p-4",
         sourceTone(mission),
       )}
     >
@@ -252,11 +256,9 @@ function MissionCard({
               {mission.priority === "urgent" ? "Do first" : mission.priority}
             </Badge>
             <Badge variant="secondary">{mission.sourceLabel}</Badge>
-            {!compact ? (
-              <Badge variant={statusVariant(mission.status)}>
-                {mission.status}
-              </Badge>
-            ) : null}
+            <Badge variant={statusVariant(mission.status)}>
+              {mission.status === "open" ? "ready" : mission.status}
+            </Badge>
           </div>
           <h3 className="mt-2 text-sm font-semibold leading-5 sm:text-base">
             {mission.title}
@@ -277,9 +279,19 @@ function MissionCard({
             ) : null}
           </div>
           {!compact ? (
-            <div className="mt-3 rounded-2xl bg-card/72 p-3 text-sm">
-              <p className="font-medium">{mission.reason}</p>
-              <p className="mt-1 text-muted-foreground">{mission.evidence}</p>
+            <div className="mt-3 grid gap-2 rounded-2xl border border-border/70 bg-background/72 p-3 text-sm sm:grid-cols-[0.9fr_1.1fr]">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Why now
+                </p>
+                <p className="mt-1 font-medium">{mission.reason}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Evidence
+                </p>
+                <p className="mt-1 text-muted-foreground">{mission.evidence}</p>
+              </div>
             </div>
           ) : null}
         </div>
@@ -402,7 +414,7 @@ function FocusHero({
   }
 
   return (
-    <Card className="overflow-hidden border-primary/20 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.16),transparent_34%),hsl(var(--card)/0.92)] shadow-[0_24px_90px_-55px_hsl(var(--primary)/0.75)] dark:bg-card dark:shadow-[0_24px_90px_-55px_rgb(255_255_255/0.22)]">
+    <Card className="overflow-hidden border-primary/20 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.16),transparent_34%),hsl(var(--card)/0.94)] shadow-[0_24px_90px_-55px_hsl(var(--primary)/0.75)] dark:border-white/10 dark:bg-black dark:shadow-[0_24px_90px_-55px_rgb(255_255_255/0.18)]">
       <CardContent className={compact ? "p-4" : "p-4 sm:p-6"}>
         <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
           <div>
@@ -422,13 +434,24 @@ function FocusHero({
               {mission.title}
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-              {mission.reason}
+              {mission.reason} Open the source, finish the work, then mark it
+              done when you have handled it.
             </p>
-            <div className="mt-4 rounded-3xl border border-border/70 bg-background/68 p-3 sm:p-4">
-              <p className="text-sm font-semibold">Why this is here</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {mission.evidence}
-              </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-3xl border border-border/70 bg-background/68 p-3 sm:p-4">
+                <p className="text-sm font-semibold">Why this is here</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {mission.evidence}
+                </p>
+              </div>
+              <div className="rounded-3xl border border-border/70 bg-background/68 p-3 sm:p-4">
+                <p className="text-sm font-semibold">Best path</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {mission.className ? `${mission.className}: ` : ""}
+                  start from the original source and use Coach only for study
+                  steps.
+                </p>
+              </div>
             </div>
             <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap">
               <Button
@@ -670,20 +693,37 @@ export function StudentMissionsPanel({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-[1.7rem] bg-background/96 pb-3 backdrop-blur-xl lg:sticky lg:top-32 lg:z-10 dark:bg-black/96">
-        <Card className="mb-3 border-blue-400/20 bg-blue-500/8 dark:border-white/10 dark:bg-white/5">
-          <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+      <div className="rounded-[1.9rem] bg-background/96 pb-3 backdrop-blur-xl lg:sticky lg:top-32 lg:z-10 dark:bg-black/96">
+        <Card className="mb-3 overflow-hidden border-border/70 bg-card/88 dark:bg-white/5">
+          <CardContent className="grid gap-4 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
             <div>
-              <p className="text-sm font-semibold text-blue-500">
-                What is Smart Learning?
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">
+                Daily Focus Hub
               </p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                It is not random tasks. EduPulse watches your real classwork,
-                due dates, uploaded materials, and returned feedback, then turns
-                them into one clear daily focus list.
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+                Know exactly what to do next.
+              </h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                Smart Learning watches your real deadlines, submissions, teacher
+                files, and returned feedback. It does not invent tasks; it
+                organizes what already happened into a calm action plan.
               </p>
             </div>
-            <Badge variant="info">Real class data only</Badge>
+            <div className="grid grid-cols-3 gap-2 sm:min-w-80">
+              {[
+                ["Open", activeData.progress.open],
+                ["Done", activeData.progress.completed],
+                ["Urgent", activeData.progress.urgent],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="rounded-2xl border border-border bg-background/70 p-3 text-center"
+                >
+                  <p className="text-lg font-semibold">{value}</p>
+                  <p className="text-[11px] text-muted-foreground">{label}</p>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
         <FocusHero
@@ -693,10 +733,15 @@ export function StudentMissionsPanel({
           compact={false}
           onAction={updateMission}
         />
-        <div className="mt-3 flex justify-end">
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground">
+            Updated from live classroom activity. Refresh when teachers add new
+            work.
+          </p>
           <Button
             type="button"
             variant="outline"
+            className="w-full sm:w-auto"
             disabled={refreshing}
             onClick={() => void refreshMissions()}
           >
@@ -706,7 +751,7 @@ export function StudentMissionsPanel({
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <main className="space-y-5">
           {activeData.visibleMissions.length === 0 ? (
             <EmptyState
@@ -718,10 +763,13 @@ export function StudentMissionsPanel({
               const missions = activeData.groupedMissions[lane];
               if (missions.length === 0) return null;
               return (
-                <section key={lane} className="space-y-3">
-                  <div className="flex items-end justify-between gap-3">
+                <section
+                  key={lane}
+                  className="rounded-[1.6rem] border border-border/70 bg-card/72 p-3 shadow-sm sm:p-4"
+                >
+                  <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
-                      <h2 className="text-lg font-semibold">
+                      <h2 className="text-base font-semibold sm:text-lg">
                         {laneLabel[lane]}
                       </h2>
                       <p className="text-sm text-muted-foreground">
@@ -747,8 +795,8 @@ export function StudentMissionsPanel({
           )}
         </main>
 
-        <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-          <Card>
+        <aside className="space-y-4 xl:sticky xl:top-32 xl:self-start">
+          <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Sparkles className="size-4 text-primary" />
@@ -783,7 +831,7 @@ export function StudentMissionsPanel({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle className="text-base">Today’s progress</CardTitle>
             </CardHeader>
