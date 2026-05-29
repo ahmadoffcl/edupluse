@@ -670,7 +670,7 @@ export function StudentMissionsPanel({
 
   return (
     <div className="space-y-5">
-      <div className="sticky top-20 z-20 rounded-[1.7rem] bg-background/72 pb-3 backdrop-blur-xl">
+      <div className="rounded-[1.7rem] bg-background/72 pb-3 backdrop-blur-xl lg:sticky lg:top-28 lg:z-20">
         <Card className="mb-3 border-blue-400/20 bg-blue-500/8">
           <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
             <div>

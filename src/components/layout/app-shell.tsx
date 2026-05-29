@@ -7,6 +7,8 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   Bell,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Command,
   LogOut,
   Menu,
@@ -39,6 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
   const [openMobile, setOpenMobile] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -49,6 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const notificationsLoadedRef = useRef(false);
   const routePendingTimerRef = useRef<number | null>(null);
+  const mobileDrawerTouchStartRef = useRef<number | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setRoutePending(false), 80);
@@ -225,6 +229,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setOpenMobile(false);
   }
 
+  function onMobileDrawerTouchStart(event: React.TouchEvent<HTMLElement>) {
+    mobileDrawerTouchStartRef.current = event.touches[0]?.clientX ?? null;
+  }
+
+  function onMobileDrawerTouchEnd(event: React.TouchEvent<HTMLElement>) {
+    const start = mobileDrawerTouchStartRef.current;
+    mobileDrawerTouchStartRef.current = null;
+    if (start === null) return;
+
+    const end = event.changedTouches[0]?.clientX ?? start;
+    if (start - end > 56) setOpenMobile(false);
+  }
+
   const unreadCount = notifications.filter((item) => !item.readAt).length;
   const currentRole = user?.role ?? "student";
   const mobilePriority = useMemo(() => {
@@ -260,6 +277,87 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const notificationDropdown = (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Notifications"
+          className="relative rounded-full"
+        >
+          <Bell />
+          {unreadCount > 0 ? (
+            <span className="absolute right-1 top-1 grid size-4 place-items-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+              {Math.min(unreadCount, 9)}
+            </span>
+          ) : null}
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          className="z-50 mt-2 w-[min(calc(100vw-1rem),22rem)] rounded-3xl border border-border bg-popover p-3 text-popover-foreground shadow-2xl"
+        >
+          <div className="flex items-center justify-between gap-3 p-3">
+            <div>
+              <p className="font-semibold">Notifications</p>
+              <p className="text-xs text-muted-foreground">
+                Class alerts and returned work
+              </p>
+            </div>
+            <Badge variant={unreadCount ? "warning" : "secondary"}>
+              {unreadCount} new
+            </Badge>
+          </div>
+          {notificationPermission === "default" ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mx-3 mb-2 w-[calc(100%-1.5rem)]"
+              onClick={enableDeviceNotifications}
+            >
+              <Bell /> Enable device alerts
+            </Button>
+          ) : null}
+          <div className="max-h-80 space-y-2 overflow-y-auto p-1">
+            {notifications.length === 0 ? (
+              <div className="rounded-2xl bg-muted p-3 text-sm">
+                <p className="font-medium">No notifications yet</p>
+                <p className="text-xs text-muted-foreground">
+                  Posts, grades, messages, and submission updates will appear
+                  here.
+                </p>
+              </div>
+            ) : (
+              notifications.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="w-full rounded-2xl border border-border bg-background/70 p-3 text-left text-sm transition hover:bg-muted"
+                  onClick={() => {
+                    if (item.actionUrl) {
+                      navigateTo(item.actionUrl);
+                    }
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-semibold">{item.title}</p>
+                    <Badge variant="secondary">{item.kind}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {item.body}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+
   return (
     <div className="min-h-screen">
       <div className="premium-grid pointer-events-none fixed inset-x-0 top-0 h-[360px]" />
@@ -273,8 +371,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ) : null}
 
       <aside
+        onTouchStart={onMobileDrawerTouchStart}
+        onTouchEnd={onMobileDrawerTouchEnd}
         className={cn(
-          "fixed bottom-4 left-4 top-4 z-50 w-[min(20rem,calc(100vw-2rem))] rounded-[2rem] border border-border/70 bg-card/92 p-4 shadow-[var(--shadow-glass)] backdrop-blur-2xl transition-transform duration-300 lg:z-40 lg:block lg:w-72 lg:translate-x-0",
+          "fixed bottom-4 left-4 top-4 z-50 flex w-[min(20rem,calc(100vw-2rem))] flex-col rounded-[2rem] border border-border/70 bg-card/92 p-4 shadow-[var(--shadow-glass)] backdrop-blur-2xl transition-all duration-300 lg:z-40 lg:block lg:translate-x-0",
+          sidebarCollapsed ? "lg:w-24" : "lg:w-72",
           openMobile ? "translate-x-0" : "-translate-x-[110%]",
         )}
       >
@@ -288,7 +389,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             }}
           >
             <BrandLogo showText={false} markClassName="size-11" />
-            <span>
+            <span className={cn(sidebarCollapsed && "lg:hidden")}>
               <span className="block font-semibold">EduPulse</span>
               <span className="text-xs text-muted-foreground">
                 {user.orgName}
@@ -303,9 +404,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <X />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden lg:inline-flex"
+            onClick={() => setSidebarCollapsed((value) => !value)}
+            aria-label={
+              sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+            }
+          >
+            {sidebarCollapsed ? <ChevronRight /> : <ChevronLeft />}
+          </Button>
         </div>
 
-        <nav className="max-h-[calc(100vh-8rem)] space-y-1 overflow-y-auto pr-1">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1">
           {nav.map((item) => {
             const active =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -320,20 +432,168 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 }}
                 className={cn(
                   "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-muted-foreground motion-safe hover:bg-muted hover:text-foreground",
+                  sidebarCollapsed && "lg:justify-center lg:px-0",
                   active &&
                     "bg-primary/12 text-primary ring-1 ring-primary/15 dark:bg-primary/15",
                 )}
+                title={item.title}
               >
                 <Icon className="size-4" />
-                {item.title}
+                <span className={cn(sidebarCollapsed && "lg:hidden")}>
+                  {item.title}
+                </span>
               </Link>
             );
           })}
         </nav>
+
+        <div className="mt-4 border-t border-border pt-3">
+          <Link
+            href={`/${user.role === "super_admin" ? "admin" : user.role}/settings`}
+            onClick={(event) => {
+              event.preventDefault();
+              navigateTo(
+                `/${user.role === "super_admin" ? "admin" : user.role}/settings`,
+              );
+            }}
+            className={cn(
+              "mb-2 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden",
+            )}
+          >
+            <ChevronRight className="size-4" />
+            Settings
+          </Link>
+          <div
+            className={cn(
+              "grid gap-2",
+              sidebarCollapsed
+                ? "lg:grid-cols-1"
+                : "grid-cols-2 lg:grid-cols-1",
+            )}
+          >
+            <div
+              className={cn(
+                "rounded-2xl border border-border bg-background/50 p-1",
+                sidebarCollapsed && "lg:grid lg:place-items-center",
+              )}
+            >
+              <ThemeToggle />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(
+                "justify-center rounded-2xl",
+                sidebarCollapsed && "lg:px-0",
+              )}
+              onClick={() => logout()}
+              title="Sign out"
+            >
+              <LogOut />
+              <span className={cn(sidebarCollapsed && "lg:hidden")}>
+                Sign out
+              </span>
+            </Button>
+          </div>
+        </div>
       </aside>
 
-      <main className="min-h-screen px-3 pb-24 pt-4 sm:px-4 sm:pb-28 sm:pt-6 lg:pb-10 lg:pl-80 lg:pr-6 lg:pt-24">
-        <header className="fixed left-4 right-4 top-4 z-30 hidden lg:left-80 lg:right-6 lg:block">
+      <header className="fixed left-3 right-3 top-3 z-30 flex items-center justify-between lg:hidden">
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          aria-label="Search"
+          className="rounded-full border-border/70 bg-card/90 shadow-[var(--shadow-glass)] backdrop-blur-xl"
+          onClick={() => {
+            setSearchOpen((value) => !value);
+            window.setTimeout(() => searchInputRef.current?.focus(), 30);
+          }}
+        >
+          <Search />
+        </Button>
+        <div className="rounded-full border border-border/70 bg-card/90 p-1 shadow-[var(--shadow-glass)] backdrop-blur-xl">
+          {notificationDropdown}
+        </div>
+      </header>
+
+      {searchOpen ? (
+        <div className="fixed left-3 right-3 top-16 z-40 rounded-[1.5rem] border border-border bg-popover p-2 text-popover-foreground shadow-2xl lg:hidden">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const first = searchResults[0];
+              if (first) openSearchResult(first.href);
+            }}
+          >
+            <div className="flex h-12 items-center gap-3 rounded-2xl border border-border bg-background/70 px-3">
+              <Search className="size-4 text-muted-foreground" />
+              <input
+                ref={searchInputRef}
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search pages"
+                className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={() => {
+                  setSearchOpen(false);
+                  setSearchQuery("");
+                }}
+              >
+                <X />
+              </Button>
+            </div>
+          </form>
+          <div className="mt-2 max-h-72 space-y-1 overflow-y-auto overscroll-contain">
+            {searchResults.length === 0 ? (
+              <div className="rounded-2xl bg-muted p-4 text-sm text-muted-foreground">
+                No matching page found.
+              </div>
+            ) : (
+              searchResults.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.href}
+                    type="button"
+                    className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm hover:bg-muted"
+                    onClick={() => openSearchResult(item.href)}
+                  >
+                    <span className="grid size-9 place-items-center rounded-full bg-primary/10 text-primary">
+                      <Icon className="size-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold">
+                        {item.title}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {item.href}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      <main
+        className={cn(
+          "min-h-screen px-3 pb-24 pt-20 sm:px-4 sm:pb-28 lg:pb-10 lg:pr-6 lg:pt-28",
+          sidebarCollapsed ? "lg:pl-32" : "lg:pl-80",
+        )}
+      >
+        <header
+          className={cn(
+            "fixed left-4 right-4 top-4 z-30 hidden lg:right-6 lg:block",
+            sidebarCollapsed ? "lg:left-32" : "lg:left-80",
+          )}
+        >
           <div className="glass-panel flex h-16 items-center justify-between rounded-full px-3">
             <div className="flex items-center gap-2">
               <Button
@@ -559,7 +819,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
 
-      <nav className="glass-panel fixed bottom-4 left-1/2 z-40 flex w-[min(calc(100%-1rem),460px)] -translate-x-1/2 items-center justify-between rounded-full px-2 py-2 lg:hidden">
+      <nav className="glass-panel fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-50 flex w-[min(calc(100%-1rem),460px)] -translate-x-1/2 touch-none select-none items-center justify-between rounded-full px-2 py-2 lg:hidden">
         {mobilePriority.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -600,7 +860,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function RouteSkeleton() {
   return (
-    <div className="fixed inset-x-3 bottom-24 top-4 z-20 rounded-[1.5rem] border border-border/70 bg-background/94 p-4 shadow-2xl backdrop-blur-xl sm:inset-x-4 sm:bottom-28 sm:top-6 lg:bottom-10 lg:left-80 lg:right-6 lg:top-24">
+    <div className="fixed inset-x-3 bottom-24 top-20 z-20 rounded-[1.5rem] border border-border/70 bg-background/94 p-4 shadow-2xl backdrop-blur-xl sm:inset-x-4 sm:bottom-28 lg:bottom-10 lg:left-80 lg:right-6 lg:top-28">
       <div className="h-full animate-pulse space-y-4 overflow-hidden">
         <div className="h-24 rounded-[1.5rem] bg-muted" />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
