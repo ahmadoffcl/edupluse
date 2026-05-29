@@ -18,7 +18,10 @@ export default async function StudentDashboardPage() {
     getStudentPerformanceData(),
   ]);
   const visibleMetrics = data.metrics
-    .filter((metric) => metric.label !== "Attendance")
+    .filter(
+      (metric) =>
+        metric.label !== "Attendance" && metric.label !== "Active records",
+    )
     .slice(0, 3);
 
   return (

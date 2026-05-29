@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { UserRecord } from "firebase-admin/auth";
 import { z } from "zod";
 import { getCurrentAppSession } from "@/lib/auth/server";
+import { sendWelcomeEmail } from "@/lib/email/server";
 import { getFirebaseAdminAuth } from "@/lib/firebase/admin";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import type { Role } from "@/lib/types";
@@ -311,6 +312,16 @@ export async function POST(request: Request) {
         role: account.role,
         created,
       }).catch(() => undefined);
+      await sendWelcomeEmail({
+        to: account.email,
+        displayName: account.displayName,
+        role: account.role,
+      }).catch((error) => {
+        console.warn(
+          "ID maker welcome email skipped",
+          error instanceof Error ? error.message : "unknown",
+        );
+      });
 
       results.push({
         ok: true,

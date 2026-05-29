@@ -554,6 +554,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       );
       window.localStorage.setItem("lumina.active.role", session.role);
+      void fetch("/api/email/welcome", { method: "POST" });
       setUser({
         uid: credential.user.uid,
         email: credential.user.email,
