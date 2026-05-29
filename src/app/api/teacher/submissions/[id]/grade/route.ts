@@ -6,6 +6,7 @@ import {
   requireWorkflowContext,
   writeAuditLog,
 } from "@/lib/server/workflow-auth";
+import { sendProfileNotificationEmails } from "@/lib/email/server";
 
 export const runtime = "nodejs";
 
@@ -81,6 +82,19 @@ export async function PATCH(
   if (notificationError) {
     console.warn("Grade notification skipped", notificationError.code);
   }
+
+  await sendProfileNotificationEmails({
+    supabase: context.supabase,
+    profileIds: [submissionAccess.studentId],
+    subject: "Assignment returned in EduPulse",
+    eyebrow: "Teacher feedback",
+    title: "Your assignment has new feedback.",
+    body: `{name}, ${submissionAccess.assignment?.title ?? "your assignment"} has been returned with feedback.`,
+    detailLabel: "Score",
+    detailValue: `${body.score}`,
+    actionLabel: "Open assignment",
+    actionUrl: `/student/assignments/${submissionAccess.assignmentId}`,
+  });
 
   await writeAuditLog(context, {
     action: "teacher.submission.graded",

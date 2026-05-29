@@ -11,6 +11,7 @@ import {
   safeStorageName,
   validateTeacherUpload,
 } from "@/lib/server/upload-validation";
+import { sendProfileNotificationEmails } from "@/lib/email/server";
 
 export const runtime = "nodejs";
 
@@ -292,6 +293,21 @@ export async function POST(request: Request) {
       }
     }
   }
+
+  await sendProfileNotificationEmails({
+    supabase: context.supabase,
+    profileIds: ((enrollments ?? []) as Array<{ student_id: string }>).map(
+      (enrollment) => enrollment.student_id,
+    ),
+    subject: `New assignment: ${body.title}`,
+    eyebrow: "New assignment",
+    title: body.title,
+    body: `{name}, your teacher posted a new assignment. Deadline: ${deadlineLabel(body.dueAt)}.`,
+    detailLabel: "Deadline",
+    detailValue: deadlineLabel(body.dueAt),
+    actionLabel: "Open assignment",
+    actionUrl: `/student/assignments/${data.id}`,
+  });
 
   await writeAuditLog(context, {
     action: "teacher.assignment.created",

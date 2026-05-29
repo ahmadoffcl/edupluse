@@ -1,12 +1,31 @@
 import "server-only";
 
 import nodemailer from "nodemailer";
+import type { Role } from "@/lib/types";
+
+type EduPulseEmailInput = {
+  to: string | null | undefined;
+  subject: string;
+  eyebrow: string;
+  title: string;
+  body: string;
+  actionLabel?: string;
+  actionUrl?: string;
+  detailLabel?: string;
+  detailValue?: string;
+};
 
 type WelcomeEmailInput = {
   to: string | null | undefined;
   displayName: string;
-  role: "student" | "teacher" | "admin" | "super_admin";
+  role: Role;
   appUrl?: string;
+};
+
+type ProfileEmailRow = {
+  id?: string | null;
+  email?: string | null;
+  display_name?: string | null;
 };
 
 const blockedEmailHints = [
@@ -39,11 +58,13 @@ export function isRealDeliverableEmail(email: string | null | undefined) {
 }
 
 function appUrl() {
-  return (
+  const raw =
     process.env.NEXT_PUBLIC_APP_URL ??
     process.env.VERCEL_PROJECT_PRODUCTION_URL ??
-    "https://edupulsebeta.vercel.app"
-  ).replace(/\/$/, "");
+    "https://edupulsebeta.vercel.app";
+  const withProtocol = raw.startsWith("http") ? raw : `https://${raw}`;
+
+  return withProtocol.replace(/\/$/, "");
 }
 
 function senderAddress() {
@@ -68,47 +89,15 @@ function smtpConfig() {
   };
 }
 
-function roleLabel(role: WelcomeEmailInput["role"]) {
+function roleLabel(role: Role) {
   return role.replace("_", " ");
 }
 
-function welcomeEmailHtml({
-  displayName,
-  role,
-  appUrl: inputAppUrl,
-}: WelcomeEmailInput) {
-  const targetUrl = inputAppUrl ?? appUrl();
-  const label = roleLabel(role);
+function absoluteUrl(pathOrUrl?: string | null) {
+  if (!pathOrUrl) return appUrl();
+  if (pathOrUrl.startsWith("http")) return pathOrUrl;
 
-  return `<!doctype html>
-<html>
-  <body style="margin:0;background:#05070c;padding:32px;font-family:Inter,Arial,sans-serif;color:#f8fafc;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;margin:0 auto;border-radius:32px;overflow:hidden;background:linear-gradient(145deg,rgba(15,23,42,.96),rgba(8,13,24,.98));border:1px solid rgba(148,163,184,.22);box-shadow:0 30px 90px rgba(8,47,73,.35);">
-      <tr>
-        <td style="padding:34px 34px 18px;">
-          <div style="display:inline-block;border-radius:999px;background:rgba(34,211,238,.12);border:1px solid rgba(103,232,249,.28);padding:8px 13px;color:#67e8f9;font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;">EduPulse access</div>
-          <h1 style="margin:22px 0 10px;font-size:34px;line-height:1.08;letter-spacing:-.02em;color:#ffffff;">Welcome to your learning workspace.</h1>
-          <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.7;">Hi ${escapeHtml(displayName)}, your ${escapeHtml(label)} account is ready. EduPulse keeps classes, assignments, notes, messages, and learning focus in one calm place.</p>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:0 34px 26px;">
-          <div style="border-radius:26px;background:linear-gradient(135deg,rgba(14,165,233,.16),rgba(99,102,241,.16),rgba(245,158,11,.14));border:1px solid rgba(255,255,255,.14);padding:22px;">
-            <p style="margin:0 0 8px;color:#94a3b8;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;">Your role</p>
-            <p style="margin:0;color:#fff;font-size:24px;font-weight:800;text-transform:capitalize;">${escapeHtml(label)}</p>
-            <p style="margin:12px 0 0;color:#dbeafe;font-size:14px;line-height:1.6;">Use your email and password to continue. If this account was created by an admin, your dashboard will open directly.</p>
-          </div>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:0 34px 36px;">
-          <a href="${escapeHtml(targetUrl)}" style="display:block;text-align:center;text-decoration:none;border-radius:999px;background:linear-gradient(135deg,#06b6d4,#4f46e5 58%,#f59e0b);padding:15px 18px;color:white;font-weight:800;font-size:15px;">Open EduPulse</a>
-          <p style="margin:18px 0 0;color:#64748b;font-size:12px;line-height:1.6;text-align:center;">This message was sent only for real inbox addresses. Dummy EduPulse demo emails are skipped automatically.</p>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+  return `${appUrl()}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
 }
 
 function escapeHtml(value: string) {
@@ -120,14 +109,59 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
-export async function sendWelcomeEmail(input: WelcomeEmailInput) {
+function emailHtml({
+  eyebrow,
+  title,
+  body,
+  actionLabel = "Open EduPulse",
+  actionUrl,
+  detailLabel,
+  detailValue,
+}: EduPulseEmailInput) {
+  const targetUrl = absoluteUrl(actionUrl);
+
+  return `<!doctype html>
+<html>
+  <body style="margin:0;background:#05070c;padding:32px;font-family:Inter,Arial,sans-serif;color:#f8fafc;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;margin:0 auto;border-radius:32px;overflow:hidden;background:linear-gradient(145deg,rgba(15,23,42,.96),rgba(8,13,24,.98));border:1px solid rgba(148,163,184,.22);box-shadow:0 30px 90px rgba(8,47,73,.35);">
+      <tr>
+        <td style="padding:34px 34px 18px;">
+          <div style="display:inline-block;border-radius:999px;background:rgba(34,211,238,.12);border:1px solid rgba(103,232,249,.28);padding:8px 13px;color:#67e8f9;font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;">${escapeHtml(eyebrow)}</div>
+          <h1 style="margin:22px 0 10px;font-size:34px;line-height:1.08;letter-spacing:-.02em;color:#ffffff;">${escapeHtml(title)}</h1>
+          <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.7;">${escapeHtml(body)}</p>
+        </td>
+      </tr>
+      ${
+        detailLabel && detailValue
+          ? `<tr>
+        <td style="padding:0 34px 26px;">
+          <div style="border-radius:26px;background:linear-gradient(135deg,rgba(14,165,233,.16),rgba(99,102,241,.16),rgba(245,158,11,.14));border:1px solid rgba(255,255,255,.14);padding:22px;">
+            <p style="margin:0 0 8px;color:#94a3b8;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;">${escapeHtml(detailLabel)}</p>
+            <p style="margin:0;color:#fff;font-size:22px;font-weight:800;">${escapeHtml(detailValue)}</p>
+          </div>
+        </td>
+      </tr>`
+          : ""
+      }
+      <tr>
+        <td style="padding:0 34px 36px;">
+          <a href="${escapeHtml(targetUrl)}" style="display:block;text-align:center;text-decoration:none;border-radius:999px;background:linear-gradient(135deg,#06b6d4,#4f46e5 58%,#f59e0b);padding:15px 18px;color:white;font-weight:800;font-size:15px;">${escapeHtml(actionLabel)}</a>
+          <p style="margin:18px 0 0;color:#64748b;font-size:12px;line-height:1.6;text-align:center;">EduPulse sends inbox notifications only to real deliverable email addresses.</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+export async function sendEduPulseEmail(input: EduPulseEmailInput) {
   if (!isRealDeliverableEmail(input.to)) {
     return { skipped: true, reason: "non-deliverable-email" };
   }
 
   const config = smtpConfig();
   if (!config) {
-    console.warn("Welcome email skipped: EMAIL_SMTP_PASSWORD is not set.");
+    console.warn("EduPulse email skipped: EMAIL_SMTP_PASSWORD is not set.");
     return { skipped: true, reason: "smtp-not-configured" };
   }
 
@@ -135,9 +169,110 @@ export async function sendWelcomeEmail(input: WelcomeEmailInput) {
   await transporter.sendMail({
     from: senderAddress(),
     to: input.to!,
-    subject: "Your EduPulse account is ready",
-    html: welcomeEmailHtml(input),
+    subject: input.subject,
+    html: emailHtml(input),
   });
 
   return { skipped: false };
+}
+
+export async function sendWelcomeEmail(input: WelcomeEmailInput) {
+  const label = roleLabel(input.role);
+
+  return sendEduPulseEmail({
+    to: input.to,
+    subject: "Your EduPulse account is ready",
+    eyebrow: "EduPulse access",
+    title: "Welcome to your learning workspace.",
+    body: `Hi ${input.displayName}, your ${label} account is ready. EduPulse keeps classes, assignments, notes, messages, and learning focus in one calm place.`,
+    detailLabel: "Your role",
+    detailValue: label,
+    actionUrl: input.appUrl,
+  });
+}
+
+export async function sendLoginEmail(input: {
+  to: string | null | undefined;
+  displayName: string;
+  role: Role;
+}) {
+  return sendEduPulseEmail({
+    to: input.to,
+    subject: "New EduPulse sign-in",
+    eyebrow: "Secure sign-in",
+    title: "Your account was just used to sign in.",
+    body: `Hi ${input.displayName}, EduPulse noticed a sign-in to your ${roleLabel(input.role)} workspace. If this was you, no action is needed.`,
+    detailLabel: "Signed in as",
+    detailValue: roleLabel(input.role),
+  });
+}
+
+export async function sendPasswordResetNoticeEmail(input: {
+  to: string | null | undefined;
+  displayName?: string | null;
+}) {
+  return sendEduPulseEmail({
+    to: input.to,
+    subject: "EduPulse password reset requested",
+    eyebrow: "Password reset",
+    title: "Password reset email sent.",
+    body: `Hi ${input.displayName ?? "there"}, a password reset was requested for your EduPulse account. Use the secure reset email from Firebase to continue.`,
+    actionLabel: "Open EduPulse",
+  });
+}
+
+export async function sendProfileNotificationEmails({
+  supabase,
+  profileIds,
+  subject,
+  eyebrow,
+  title,
+  body,
+  actionUrl,
+  actionLabel,
+  detailLabel,
+  detailValue,
+}: {
+  // Supabase's fluent query builder has very deep generic types in this app.
+  // Keep this helper structurally loose so notification routes stay readable.
+  supabase: {
+    from: (table: string) => unknown;
+  };
+  profileIds: Array<string | null | undefined>;
+} & Omit<EduPulseEmailInput, "to">) {
+  const ids = Array.from(new Set(profileIds.filter(Boolean))) as string[];
+  if (!ids.length) return;
+
+  const query = supabase.from("profiles") as {
+    select: (columns: string) => {
+      in: (
+        column: string,
+        values: string[],
+      ) => PromiseLike<{ data: ProfileEmailRow[] | null; error: unknown }>;
+    };
+  };
+  const { data, error } = await query
+    .select("id,email,display_name")
+    .in("id", ids);
+
+  if (error || !data?.length) {
+    if (error) console.warn("Email profile lookup skipped", error);
+    return;
+  }
+
+  await Promise.allSettled(
+    data.map((profile) =>
+      sendEduPulseEmail({
+        to: profile.email,
+        subject,
+        eyebrow,
+        title,
+        body: body.replaceAll("{name}", profile.display_name ?? "there"),
+        actionUrl,
+        actionLabel,
+        detailLabel,
+        detailValue,
+      }),
+    ),
+  );
 }

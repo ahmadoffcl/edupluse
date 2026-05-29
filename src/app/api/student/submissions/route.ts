@@ -9,6 +9,7 @@ import {
   safeStorageName,
   validateTeacherUpload,
 } from "@/lib/server/upload-validation";
+import { sendProfileNotificationEmails } from "@/lib/email/server";
 
 export const runtime = "nodejs";
 
@@ -179,6 +180,19 @@ export async function POST(request: Request) {
     if (notificationError) {
       console.warn("Submission notification skipped", notificationError.code);
     }
+
+    await sendProfileNotificationEmails({
+      supabase: context.supabase,
+      profileIds: [assignment.teacher_id],
+      subject: `Submission received: ${assignment.title}`,
+      eyebrow: "Student submission",
+      title: `${context.session.displayName} submitted work.`,
+      body: `${context.session.displayName} submitted ${assignment.title}. Open EduPulse to review the file, notes, and submission time.`,
+      detailLabel: "Status",
+      detailValue: status,
+      actionLabel: "Open submissions",
+      actionUrl: "/teacher/assignments",
+    });
   }
 
   await writeAuditLog(context, {

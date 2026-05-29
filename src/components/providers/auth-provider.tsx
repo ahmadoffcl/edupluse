@@ -504,6 +504,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ]);
       }
       window.localStorage.setItem("lumina.active.role", session.role);
+      void fetch("/api/email/login", { method: "POST" });
       setUser({
         uid: credential.user.uid,
         email: credential.user.email,
@@ -607,6 +608,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ]);
     }
     window.localStorage.setItem("lumina.active.role", session.role);
+    void fetch("/api/email/login", { method: "POST" });
     setUser({
       uid: credential.user.uid,
       email: credential.user.email,
@@ -640,6 +642,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     await sendPasswordResetEmail(auth, email);
+    void fetch("/api/email/password-reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
     toast.success("Password reset email sent");
   }, []);
 

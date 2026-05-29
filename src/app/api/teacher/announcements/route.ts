@@ -6,6 +6,7 @@ import {
   requireWorkflowContext,
   writeAuditLog,
 } from "@/lib/server/workflow-auth";
+import { sendProfileNotificationEmails } from "@/lib/email/server";
 
 export const runtime = "nodejs";
 
@@ -76,6 +77,19 @@ export async function POST(request: Request) {
         );
       }
     }
+
+    await sendProfileNotificationEmails({
+      supabase: context.supabase,
+      profileIds: notifications.map(
+        (notification) => notification.recipient_id,
+      ),
+      subject: `Announcement: ${body.title}`,
+      eyebrow: "Class announcement",
+      title: body.title,
+      body: `{name}, your teacher shared a new class announcement: ${body.body}`,
+      actionLabel: "Open messages",
+      actionUrl: "/student/messages",
+    });
   }
 
   await writeAuditLog(context, {

@@ -6,6 +6,7 @@ import {
   sessionCookieOptions,
   signAppSession,
 } from "@/lib/auth/session";
+import { sendLoginEmail } from "@/lib/email/server";
 
 export const runtime = "nodejs";
 
@@ -142,6 +143,16 @@ export async function POST(request: Request) {
           onboardingCompleted: true,
         });
     response.cookies.set(sessionCookieName, token, sessionCookieOptions());
+    await sendLoginEmail({
+      to: configuredEmail,
+      displayName: "EduPulse Admin",
+      role: "admin",
+    }).catch((error) => {
+      console.warn(
+        "Admin login email skipped",
+        error instanceof Error ? error.message : "unknown",
+      );
+    });
 
     return response;
   } catch {
