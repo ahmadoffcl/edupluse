@@ -374,12 +374,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         onTouchStart={onMobileDrawerTouchStart}
         onTouchEnd={onMobileDrawerTouchEnd}
         className={cn(
-          "fixed bottom-4 left-4 top-4 z-50 flex w-[min(20rem,calc(100vw-2rem))] flex-col rounded-[2rem] border border-border/70 bg-card/92 p-4 shadow-[var(--shadow-glass)] backdrop-blur-2xl transition-all duration-300 lg:z-40 lg:block lg:translate-x-0",
+          "fixed bottom-4 left-4 top-4 z-50 flex w-[min(20rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-[2rem] border border-border/70 bg-card/92 p-4 shadow-[var(--shadow-glass)] backdrop-blur-2xl transition-all duration-300 dark:bg-black/96 lg:z-40 lg:flex lg:translate-x-0",
           sidebarCollapsed ? "lg:w-24" : "lg:w-72",
           openMobile ? "translate-x-0" : "-translate-x-[110%]",
         )}
       >
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-5 shrink-0 flex items-center justify-between">
           <Link
             href={homeForRole(user.role)}
             className="flex items-center gap-3"
@@ -417,7 +417,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Button>
         </div>
 
-        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pb-2 pr-1">
           {nav.map((item) => {
             const active =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -431,10 +431,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   navigateTo(item.href);
                 }}
                 className={cn(
-                  "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-muted-foreground motion-safe hover:bg-muted hover:text-foreground",
+                  "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-muted-foreground motion-safe hover:bg-muted hover:text-foreground dark:hover:bg-white/10",
                   sidebarCollapsed && "lg:justify-center lg:px-0",
                   active &&
-                    "bg-primary/12 text-primary ring-1 ring-primary/15 dark:bg-primary/15",
+                    "bg-primary/12 text-primary ring-1 ring-primary/15 dark:bg-white dark:text-black dark:ring-white/20",
                 )}
                 title={item.title}
               >
@@ -447,7 +447,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="mt-4 border-t border-border pt-3">
+        <div className="shrink-0 border-t border-border pt-3">
           <Link
             href={`/${user.role === "super_admin" ? "admin" : user.role}/settings`}
             onClick={(event) => {
@@ -498,7 +498,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <header className="fixed left-3 right-3 top-3 z-30 flex items-center justify-between lg:hidden">
+      <header
+        className={cn(
+          "fixed left-3 right-3 top-3 z-30 flex items-center justify-between transition duration-200 lg:hidden",
+          openMobile && "pointer-events-none -translate-y-3 opacity-0",
+        )}
+      >
         <Button
           type="button"
           size="icon"
@@ -581,6 +586,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       ) : null}
+
+      <div
+        className={cn(
+          "pointer-events-none fixed right-0 top-0 z-[25] hidden h-28 bg-background/96 backdrop-blur-xl lg:block",
+          sidebarCollapsed ? "lg:left-24" : "lg:left-72",
+        )}
+      />
 
       <main
         className={cn(
@@ -819,7 +831,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
 
-      <nav className="glass-panel fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-50 flex w-[min(calc(100%-1rem),460px)] -translate-x-1/2 touch-none select-none items-center justify-between rounded-full px-2 py-2 lg:hidden">
+      <nav
+        className={cn(
+          "glass-panel fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-50 flex w-[min(calc(100%-1rem),460px)] -translate-x-1/2 touch-none select-none items-center justify-between rounded-full px-2 py-2 transition duration-200 lg:hidden",
+          openMobile && "pointer-events-none translate-y-24 opacity-0",
+        )}
+      >
         {mobilePriority.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -834,8 +851,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 navigateTo(item.href);
               }}
               className={cn(
-                "grid size-12 place-items-center rounded-full text-muted-foreground motion-safe hover:bg-muted hover:text-foreground",
-                active && "bg-primary text-primary-foreground",
+                "grid size-12 place-items-center rounded-full text-muted-foreground motion-safe hover:bg-muted hover:text-foreground dark:hover:bg-white/10",
+                active &&
+                  "bg-primary text-primary-foreground dark:bg-white dark:text-black",
               )}
             >
               <Icon className="size-5" />
@@ -847,8 +865,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           aria-label="Open full menu"
           onClick={() => setOpenMobile(true)}
           className={cn(
-            "grid size-12 place-items-center rounded-full text-muted-foreground motion-safe hover:bg-muted hover:text-foreground",
-            openMobile && "bg-primary text-primary-foreground",
+            "grid size-12 place-items-center rounded-full text-muted-foreground motion-safe hover:bg-muted hover:text-foreground dark:hover:bg-white/10",
+            openMobile &&
+              "bg-primary text-primary-foreground dark:bg-white dark:text-black",
           )}
         >
           <Menu className="size-5" />

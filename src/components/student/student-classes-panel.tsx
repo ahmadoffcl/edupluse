@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import * as Dialog from "@radix-ui/react-dialog";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   BookOpen,
@@ -15,6 +16,7 @@ import {
   Search,
   UserRound,
   UsersRound,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ClassroomCard } from "@/components/classroom/classroom-card";
@@ -673,24 +675,82 @@ function PeoplePanel({ classRecord }: { classRecord: StudentClassRow }) {
             <>
               <div className="grid gap-3 sm:grid-cols-2">
                 {visibleClassmates.map((student) => (
-                  <div
-                    key={student.id}
-                    className="flex items-center gap-3 rounded-3xl border border-border bg-background/60 p-4"
-                  >
-                    <span className="grid size-10 place-items-center rounded-full bg-muted text-xs font-bold">
-                      {initials(student.name)}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold">
-                        {student.name}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {student.username
-                          ? `@${student.username}`
-                          : student.email}
-                      </span>
-                    </span>
-                  </div>
+                  <Dialog.Root key={student.id}>
+                    <Dialog.Trigger asChild>
+                      <button className="flex items-center gap-3 rounded-3xl border border-border bg-background/60 p-4 text-left transition hover:-translate-y-0.5 hover:bg-muted hover:shadow-lg">
+                        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-muted text-xs font-bold">
+                          {initials(student.name)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold">
+                            {student.name}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {student.username
+                              ? `@${student.username}`
+                              : "Classmate"}
+                          </span>
+                        </span>
+                        <ChevronRight className="size-4 text-muted-foreground" />
+                      </button>
+                    </Dialog.Trigger>
+                    <Dialog.Portal>
+                      <Dialog.Overlay className="fixed inset-0 z-[80] bg-black/65 backdrop-blur-sm" />
+                      <Dialog.Content className="fixed bottom-0 left-0 right-0 z-[90] max-h-[86vh] overflow-auto rounded-t-[2rem] border border-border bg-card p-5 shadow-2xl outline-none sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-[min(92vw,520px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[2rem]">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex min-w-0 items-center gap-4">
+                            <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-primary/10 text-lg font-bold text-primary">
+                              {initials(student.name)}
+                            </span>
+                            <div className="min-w-0">
+                              <Dialog.Title className="truncate text-xl font-semibold">
+                                {student.name}
+                              </Dialog.Title>
+                              <Dialog.Description className="mt-1 truncate text-sm text-muted-foreground">
+                                {student.username
+                                  ? `@${student.username}`
+                                  : "EduPulse classmate"}
+                              </Dialog.Description>
+                            </div>
+                          </div>
+                          <Dialog.Close asChild>
+                            <Button type="button" size="icon" variant="ghost">
+                              <X />
+                            </Button>
+                          </Dialog.Close>
+                        </div>
+                        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                          {[
+                            ["Class", classRecord.name],
+                            ["Section", classRecord.section ?? "Open"],
+                            ["Role", "Student"],
+                          ].map(([label, value]) => (
+                            <div
+                              key={label}
+                              className="rounded-2xl border border-border bg-background/70 p-3"
+                            >
+                              <p className="text-xs text-muted-foreground">
+                                {label}
+                              </p>
+                              <p className="mt-1 truncate text-sm font-semibold">
+                                {value}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-4 rounded-3xl border border-border bg-background/70 p-4">
+                          <p className="font-semibold">
+                            Public learning profile
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                            EduPulse shows classmates by public identity inside
+                            shared classrooms. Private account details stay
+                            hidden.
+                          </p>
+                        </div>
+                      </Dialog.Content>
+                    </Dialog.Portal>
+                  </Dialog.Root>
                 ))}
               </div>
               {filteredClassmates.length > visibleClassmates.length ? (

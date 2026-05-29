@@ -402,7 +402,7 @@ function FocusHero({
   }
 
   return (
-    <Card className="overflow-hidden border-primary/20 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.16),transparent_34%),hsl(var(--card)/0.92)] shadow-[0_24px_90px_-55px_hsl(var(--primary)/0.75)]">
+    <Card className="overflow-hidden border-primary/20 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.16),transparent_34%),hsl(var(--card)/0.92)] shadow-[0_24px_90px_-55px_hsl(var(--primary)/0.75)] dark:bg-card dark:shadow-[0_24px_90px_-55px_rgb(255_255_255/0.22)]">
       <CardContent className={compact ? "p-4" : "p-4 sm:p-6"}>
         <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
           <div>
@@ -626,7 +626,7 @@ export function StudentMissionsPanel({
   if (compact) {
     return (
       <div className="space-y-3">
-        <Card className="border-blue-400/20 bg-blue-500/8">
+        <Card className="border-blue-400/20 bg-blue-500/8 dark:border-white/10 dark:bg-white/5">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
               <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-blue-500/12 text-blue-500">
@@ -670,8 +670,8 @@ export function StudentMissionsPanel({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-[1.7rem] bg-background/72 pb-3 backdrop-blur-xl lg:sticky lg:top-28 lg:z-20">
-        <Card className="mb-3 border-blue-400/20 bg-blue-500/8">
+      <div className="rounded-[1.7rem] bg-background/96 pb-3 backdrop-blur-xl lg:sticky lg:top-32 lg:z-10 dark:bg-black/96">
+        <Card className="mb-3 border-blue-400/20 bg-blue-500/8 dark:border-white/10 dark:bg-white/5">
           <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
             <div>
               <p className="text-sm font-semibold text-blue-500">

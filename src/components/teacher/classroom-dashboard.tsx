@@ -116,16 +116,17 @@ function ClassInterventionPanel({
   if (signals.length === 0) return null;
 
   return (
-    <Card className="border-amber-400/20 bg-amber-500/8">
+    <Card className="border-amber-400/20 bg-gradient-to-br from-amber-500/10 via-card to-card dark:bg-card">
       <CardContent className="space-y-3 p-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="flex items-center gap-2 font-semibold">
-              <Sparkles className="size-4 text-primary" />
+              <Sparkles className="size-4 text-amber-500" />
               Students needing help today
             </p>
             <p className="text-sm text-muted-foreground">
-              Real Smart Mission blockers from this class.
+              Smart Learning turns real missing work, deadlines, and feedback
+              into teacher follow-up signals.
             </p>
           </div>
           <Badge variant="warning">{signals.length} signal(s)</Badge>
