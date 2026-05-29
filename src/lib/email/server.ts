@@ -122,22 +122,32 @@ function emailHtml({
 
   return `<!doctype html>
 <html>
-  <body style="margin:0;background:#05070c;padding:32px;font-family:Inter,Arial,sans-serif;color:#f8fafc;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;margin:0 auto;border-radius:32px;overflow:hidden;background:linear-gradient(145deg,rgba(15,23,42,.96),rgba(8,13,24,.98));border:1px solid rgba(148,163,184,.22);box-shadow:0 30px 90px rgba(8,47,73,.35);">
+  <body style="margin:0;background:#f4f8fc;padding:28px 14px;font-family:Inter,Arial,sans-serif;color:#111827;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;margin:0 auto;">
+      <tr>
+        <td style="padding:0 0 14px;text-align:center;">
+          <span style="display:inline-block;color:#2563eb;font-size:13px;font-weight:600;letter-spacing:.08em;">EduPulse</span>
+        </td>
+      </tr>
+    </table>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;margin:0 auto;border-radius:24px;overflow:hidden;background:#ffffff;border:1px solid #dbe7f3;box-shadow:0 18px 50px rgba(15,23,42,.10);">
+      <tr>
+        <td style="height:5px;background:linear-gradient(90deg,#1d4ed8,#38bdf8);font-size:0;line-height:0;">&nbsp;</td>
+      </tr>
       <tr>
         <td style="padding:34px 34px 18px;">
-          <div style="display:inline-block;border-radius:999px;background:rgba(34,211,238,.12);border:1px solid rgba(103,232,249,.28);padding:8px 13px;color:#67e8f9;font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;">${escapeHtml(eyebrow)}</div>
-          <h1 style="margin:22px 0 10px;font-size:34px;line-height:1.08;letter-spacing:-.02em;color:#ffffff;">${escapeHtml(title)}</h1>
-          <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.7;">${escapeHtml(body)}</p>
+          <div style="display:inline-block;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;padding:7px 12px;color:#1d4ed8;font-size:12px;font-weight:500;letter-spacing:.10em;text-transform:uppercase;">${escapeHtml(eyebrow)}</div>
+          <h1 style="margin:20px 0 12px;font-size:29px;line-height:1.18;letter-spacing:-.01em;color:#0f172a;font-weight:650;">${escapeHtml(title)}</h1>
+          <p style="margin:0;color:#475569;font-size:15px;line-height:1.75;font-weight:400;">${escapeHtml(body)}</p>
         </td>
       </tr>
       ${
         detailLabel && detailValue
           ? `<tr>
-        <td style="padding:0 34px 26px;">
-          <div style="border-radius:26px;background:linear-gradient(135deg,rgba(14,165,233,.16),rgba(99,102,241,.16),rgba(245,158,11,.14));border:1px solid rgba(255,255,255,.14);padding:22px;">
-            <p style="margin:0 0 8px;color:#94a3b8;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;">${escapeHtml(detailLabel)}</p>
-            <p style="margin:0;color:#fff;font-size:22px;font-weight:800;">${escapeHtml(detailValue)}</p>
+        <td style="padding:0 34px 24px;">
+          <div style="border-radius:18px;background:#f8fbff;border:1px solid #e2edf8;padding:18px;">
+            <p style="margin:0 0 7px;color:#64748b;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.10em;">${escapeHtml(detailLabel)}</p>
+            <p style="margin:0;color:#0f172a;font-size:18px;font-weight:550;line-height:1.4;">${escapeHtml(detailValue)}</p>
           </div>
         </td>
       </tr>`
@@ -145,8 +155,15 @@ function emailHtml({
       }
       <tr>
         <td style="padding:0 34px 36px;">
-          <a href="${escapeHtml(targetUrl)}" style="display:block;text-align:center;text-decoration:none;border-radius:999px;background:linear-gradient(135deg,#06b6d4,#4f46e5 58%,#f59e0b);padding:15px 18px;color:white;font-weight:800;font-size:15px;">${escapeHtml(actionLabel)}</a>
-          <p style="margin:18px 0 0;color:#64748b;font-size:12px;line-height:1.6;text-align:center;">EduPulse sends inbox notifications only to real deliverable email addresses.</p>
+          <a href="${escapeHtml(targetUrl)}" style="display:block;text-align:center;text-decoration:none;border-radius:14px;background:#1d4ed8;padding:14px 18px;color:#ffffff;font-weight:600;font-size:15px;box-shadow:0 10px 24px rgba(29,78,216,.22);">${escapeHtml(actionLabel)}</a>
+          <p style="margin:18px 0 0;color:#94a3b8;font-size:12px;line-height:1.6;text-align:center;">You received this because your EduPulse account uses this email address.</p>
+        </td>
+      </tr>
+    </table>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;margin:0 auto;">
+      <tr>
+        <td style="padding:16px 18px 0;text-align:center;color:#94a3b8;font-size:12px;line-height:1.6;">
+          EduPulse keeps classroom updates, assignments, feedback, and messages connected.
         </td>
       </tr>
     </table>
