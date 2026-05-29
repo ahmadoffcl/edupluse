@@ -61,6 +61,36 @@ const authCopy = {
 function authErrorMessage(error: unknown) {
   const message =
     error instanceof Error ? error.message : "Please check your details.";
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("auth/weak-password") ||
+    normalized.includes("password should be") ||
+    normalized.includes("invalid-password")
+  ) {
+    return "Use a stronger password with at least 8 characters.";
+  }
+
+  if (
+    normalized.includes("auth/invalid-credential") ||
+    normalized.includes("auth/wrong-password") ||
+    normalized.includes("auth/user-not-found") ||
+    normalized.includes("invalid login credentials")
+  ) {
+    return "The email or password is incorrect.";
+  }
+
+  if (normalized.includes("auth/email-already-in-use")) {
+    return "An account already exists with this email. Sign in instead.";
+  }
+
+  if (normalized.includes("auth/invalid-email")) {
+    return "Enter a valid email address.";
+  }
+
+  if (normalized.includes("auth/too-many-requests")) {
+    return "Too many attempts. Please wait a bit and try again.";
+  }
 
   if (
     message.includes("api-key-not-valid") ||
@@ -89,7 +119,11 @@ function authErrorMessage(error: unknown) {
     return "This account can be set up now. Please create your profile to continue.";
   }
 
-  return message;
+  return message
+    .replaceAll("Firebase: ", "")
+    .replaceAll("FirebaseError: ", "")
+    .replace(/\s*\(auth\/[^)]+\)\.?/gi, "")
+    .trim();
 }
 
 function AuthBackdrop() {

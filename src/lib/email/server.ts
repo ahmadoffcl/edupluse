@@ -233,7 +233,7 @@ export async function sendPasswordResetNoticeEmail(input: {
     subject: "EduPulse password reset requested",
     eyebrow: "Password reset",
     title: "Password reset email sent.",
-    body: `Hi ${input.displayName ?? "there"}, a password reset was requested for your EduPulse account. Use the secure reset email from Firebase to continue.`,
+    body: `Hi ${input.displayName ?? "there"}, a password reset was requested for your EduPulse account. Use the secure reset email to continue.`,
     actionLabel: "Open EduPulse",
   });
 }

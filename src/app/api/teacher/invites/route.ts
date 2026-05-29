@@ -11,6 +11,7 @@ import {
   createInviteToken,
   hashInviteSecret,
 } from "@/lib/server/invite-tokens";
+import { sendEduPulseEmail } from "@/lib/email/server";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,7 @@ const schema = z.object({
   classId: z.string().uuid(),
   expiresInDays: z.coerce.number().int().min(1).max(60).default(7),
   maxUses: z.coerce.number().int().min(1).max(200).default(30),
+  emails: z.array(z.string().trim().email()).max(50).optional().default([]),
   section: z.string().trim().max(80).optional().nullable(),
   personalMessage: z.string().trim().max(500).optional().nullable(),
 });
@@ -72,6 +74,25 @@ export async function POST(request: Request) {
     metadata: { classId: body.classId, maxUses: body.maxUses },
   });
 
+  const inviteUrl = `${new URL(request.url).origin}/invite/${token}`;
+  if (body.emails.length) {
+    await Promise.allSettled(
+      body.emails.map((email) =>
+        sendEduPulseEmail({
+          to: email,
+          subject: `${context.session.displayName} invited you to ${classAccess?.name ?? "a class"}`,
+          eyebrow: "Class invitation",
+          title: "You have a class invite.",
+          body: `${context.session.displayName} invited you to join ${classAccess?.name ?? "an EduPulse class"}. Open the secure invite link, create your password, and the class will be added to your workspace.`,
+          detailLabel: "Class",
+          detailValue: classAccess?.name ?? "EduPulse class",
+          actionLabel: "Join class",
+          actionUrl: inviteUrl,
+        }),
+      ),
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     invite: {
@@ -79,7 +100,8 @@ export async function POST(request: Request) {
       token,
       code,
       expiresAt: data.expires_at,
-      inviteUrl: `${new URL(request.url).origin}/invite/${token}`,
+      inviteUrl,
     },
+    emailed: body.emails.length,
   });
 }

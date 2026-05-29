@@ -2,11 +2,6 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  updateProfile,
-} from "firebase/auth";
 import { ArrowRight, Clock, KeyRound, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +14,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { getFirebaseAuth } from "@/lib/firebase/client";
 import type { Role } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
@@ -55,6 +49,34 @@ function dashboardPath(role: Role, onboardingCompleted: boolean) {
   if (role === "admin" || role === "super_admin") return "/admin";
   if (!onboardingCompleted) return `/onboarding/${role}`;
   return `/${role}`;
+}
+
+function inviteErrorMessage(error: unknown) {
+  const message =
+    error instanceof Error ? error.message : "Please check your details.";
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("weak-password") ||
+    normalized.includes("invalid-password") ||
+    normalized.includes("password should")
+  ) {
+    return "Use a stronger password with at least 8 characters.";
+  }
+
+  if (normalized.includes("invalid-email")) {
+    return "Enter a valid email address.";
+  }
+
+  if (normalized.includes("email-already-exists")) {
+    return "This email already has an account. The invite will update its password if the link is valid.";
+  }
+
+  return message
+    .replaceAll("Firebase: ", "")
+    .replaceAll("FirebaseError: ", "")
+    .replace(/\s*\(auth\/[^)]+\)\.?/gi, "")
+    .trim();
 }
 
 export function InviteAcceptanceCard({ token }: { token: string }) {
@@ -120,44 +142,16 @@ export function InviteAcceptanceCard({ token }: { token: string }) {
 
   async function acceptInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const auth = getFirebaseAuth();
-    if (!auth) {
-      toast.error("Sign-up is not available for this workspace yet.");
-      return;
-    }
-
     setBusy(true);
     try {
-      let credential;
-      try {
-        credential = await createUserWithEmailAndPassword(
-          auth,
-          form.email,
-          form.password,
-        );
-      } catch (caught) {
-        const firebaseCode =
-          typeof caught === "object" && caught && "code" in caught
-            ? String((caught as { code?: string }).code)
-            : "";
-
-        if (firebaseCode !== "auth/email-already-in-use") throw caught;
-        credential = await signInWithEmailAndPassword(
-          auth,
-          form.email,
-          form.password,
-        );
-      }
-
-      await updateProfile(credential.user, { displayName: form.displayName });
-      const idToken = await credential.user.getIdToken(true);
       const response = await fetch("/api/invites/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          idToken,
           token,
           displayName: form.displayName,
+          email: form.email,
+          password: form.password,
           deviceSessionId: createDeviceSessionId(),
         }),
       });
@@ -179,7 +173,7 @@ export function InviteAcceptanceCard({ token }: { token: string }) {
       );
     } catch (caught) {
       toast.error("Invite acceptance failed", {
-        description: caught instanceof Error ? caught.message : "Try again.",
+        description: inviteErrorMessage(caught),
       });
     } finally {
       setBusy(false);

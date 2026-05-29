@@ -5,7 +5,10 @@ import {
   sessionCookieOptions,
   signAppSession,
 } from "@/lib/auth/session";
-import { verifyFirebaseBearerToken } from "@/lib/firebase/admin";
+import {
+  getFirebaseAdminAuth,
+  verifyFirebaseBearerToken,
+} from "@/lib/firebase/admin";
 import { hashInviteSecret, inviteStatus } from "@/lib/server/invite-tokens";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import type { Role } from "@/lib/types";
@@ -13,12 +16,20 @@ import type { Role } from "@/lib/types";
 export const runtime = "nodejs";
 
 const schema = z.object({
-  idToken: z.string().min(1),
+  idToken: z.string().min(1).optional(),
   token: z.string().trim().optional(),
   code: z.string().trim().optional(),
+  email: z.string().trim().email().optional(),
+  password: z.string().min(8).max(128).optional(),
   displayName: z.string().trim().min(1).max(120),
   deviceSessionId: z.string().trim().min(1),
 });
+
+function errorCode(error: unknown) {
+  return typeof error === "object" && error
+    ? (error as { code?: string }).code
+    : undefined;
+}
 
 export async function POST(request: Request) {
   const supabase = getSupabaseServiceClient();
@@ -38,11 +49,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const verified = await verifyFirebaseBearerToken(
-    new Request(request.url, {
-      headers: { Authorization: `Bearer ${body.idToken}` },
-    }),
-  );
   const hash = hashInviteSecret(secret);
   const query = supabase
     .from("invites")
@@ -67,8 +73,72 @@ export async function POST(request: Request) {
     );
   }
 
+  const auth = getFirebaseAdminAuth();
+  let verified: { uid: string; email: string | null; demo?: boolean };
+
   const inviteEmail =
     typeof invite.email === "string" ? invite.email.toLowerCase() : "";
+  const requestedEmail = (body.email ?? inviteEmail).toLowerCase();
+
+  if (body.idToken) {
+    verified = await verifyFirebaseBearerToken(
+      new Request(request.url, {
+        headers: { Authorization: `Bearer ${body.idToken}` },
+      }),
+    );
+  } else {
+    if (!auth) {
+      return NextResponse.json(
+        { ok: false, error: "Account creation is not available yet." },
+        { status: 503 },
+      );
+    }
+
+    if (!requestedEmail || !body.password) {
+      return NextResponse.json(
+        { ok: false, error: "Email and password are required." },
+        { status: 400 },
+      );
+    }
+
+    try {
+      const created = await auth.createUser({
+        email: requestedEmail,
+        password: body.password,
+        displayName: body.displayName,
+        emailVerified: true,
+        disabled: false,
+      });
+      verified = { uid: created.uid, email: created.email ?? requestedEmail };
+    } catch (error) {
+      if (
+        errorCode(error) === "auth/invalid-password" ||
+        errorCode(error) === "auth/weak-password"
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Use a stronger password with at least 8 characters.",
+          },
+          { status: 400 },
+        );
+      }
+
+      if (errorCode(error) !== "auth/email-already-exists") {
+        throw error;
+      }
+
+      const existing = await auth.getUserByEmail(requestedEmail);
+      const updated = await auth.updateUser(existing.uid, {
+        password: body.password,
+        displayName: body.displayName,
+        emailVerified: true,
+        disabled: false,
+      });
+      verified = { uid: updated.uid, email: updated.email ?? requestedEmail };
+    }
+  }
+
   const verifiedEmail = (verified.email ?? "").toLowerCase();
   if (inviteEmail && verifiedEmail && inviteEmail !== verifiedEmail) {
     return NextResponse.json(

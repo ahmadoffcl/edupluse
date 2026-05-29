@@ -1488,6 +1488,7 @@ export function CommunicationComposerPanel({
   const [createdInvite, setCreatedInvite] = useState<{
     inviteUrl: string;
     code: string;
+    emailed?: number;
   } | null>(null);
 
   async function submitAnnouncement(event: FormEvent<HTMLFormElement>) {
@@ -1594,6 +1595,10 @@ export function CommunicationComposerPanel({
     setBusyAction("invite");
 
     try {
+      const emails = String(form.get("emails") ?? "")
+        .split(/[\n,]+/)
+        .map((email) => email.trim())
+        .filter(Boolean);
       const response = await fetch("/api/teacher/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1601,6 +1606,7 @@ export function CommunicationComposerPanel({
           classId: String(form.get("classId") ?? ""),
           expiresInDays: Number(form.get("expiresInDays") ?? 7),
           maxUses: Number(form.get("maxUses") ?? 30),
+          emails,
           section: String(form.get("section") ?? "") || null,
           personalMessage: String(form.get("personalMessage") ?? "") || null,
         }),
@@ -1609,14 +1615,19 @@ export function CommunicationComposerPanel({
         ok?: boolean;
         error?: string;
         invite?: { inviteUrl: string; code: string };
+        emailed?: number;
       };
 
       if (!response.ok || !result.ok || !result.invite) {
         throw new Error(result.error ?? "Unable to create invite.");
       }
 
-      setCreatedInvite(result.invite);
-      toast.success("Class invite created.");
+      setCreatedInvite({ ...result.invite, emailed: result.emailed ?? 0 });
+      toast.success(
+        result.emailed
+          ? `Class invite created and emailed to ${result.emailed} student${result.emailed === 1 ? "" : "s"}.`
+          : "Class invite created.",
+      );
     } catch (error) {
       toast.error("Invite failed", {
         description: error instanceof Error ? error.message : "Try again.",
@@ -1774,6 +1785,11 @@ export function CommunicationComposerPanel({
             <Input name="section" placeholder="Section" />
             <Textarea
               className="md:col-span-2"
+              name="emails"
+              placeholder="Send by email: student1@gmail.com, student2@gmail.com"
+            />
+            <Textarea
+              className="md:col-span-2"
               name="personalMessage"
               placeholder="Optional welcome message"
             />
@@ -1788,6 +1804,12 @@ export function CommunicationComposerPanel({
           {createdInvite && (
             <div className="mt-4 rounded-3xl border border-primary/25 bg-primary/10 p-4">
               <p className="font-semibold">Copy this invite now</p>
+              {createdInvite.emailed ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Also sent by email to {createdInvite.emailed} recipient
+                  {createdInvite.emailed === 1 ? "" : "s"}.
+                </p>
+              ) : null}
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
                   size="sm"

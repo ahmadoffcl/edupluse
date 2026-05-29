@@ -469,8 +469,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger asChild>
                   <button className="flex items-center gap-2 rounded-full p-1 pr-3 motion-safe hover:bg-muted">
-                    <Avatar.Root className="grid size-10 place-items-center rounded-full bg-primary/15 text-sm font-bold text-primary">
-                      <Avatar.Image src={user.photoURL ?? undefined} />
+                    <Avatar.Root className="grid size-10 place-items-center overflow-hidden rounded-full bg-primary/15 text-sm font-bold text-primary">
+                      <Avatar.Image
+                        className="size-full rounded-full object-cover"
+                        src={user.photoURL ?? undefined}
+                      />
                       <Avatar.Fallback>
                         {initials(user.displayName)}
                       </Avatar.Fallback>
