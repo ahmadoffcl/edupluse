@@ -26,9 +26,9 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { hasCompletedOnboarding } from "@/lib/onboarding-storage";
-import { homeForRole } from "@/lib/permissions";
+import { canAccessPath, homeForRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import type { AuthSessionResult } from "@/lib/types";
+import type { AuthSessionResult, AuthUser } from "@/lib/types";
 
 type AuthMode = "login" | "signup";
 type AuthPanelMode = AuthMode | "reset";
@@ -166,6 +166,7 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [redirectBlocked, setRedirectBlocked] = useState("");
   const redirectTimerRef = useRef<number | null>(null);
   const {
     configured,
@@ -181,18 +182,54 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
   const activeMode: AuthPanelMode = isReset ? "reset" : authMode;
   const copy = authCopy[activeMode];
 
+  async function verifiedWorkspaceTarget(target: string) {
+    if (
+      !target.startsWith("/student") &&
+      !target.startsWith("/teacher") &&
+      !target.startsWith("/admin")
+    ) {
+      return target;
+    }
+
+    const response = await fetch("/api/auth/session", { cache: "no-store" });
+    const payload = (await response.json().catch(() => null)) as {
+      user?: AuthUser;
+    } | null;
+
+    if (!response.ok || !payload?.user) {
+      throw new Error("Your secure workspace session is still being repaired.");
+    }
+
+    return canAccessPath(payload.user.role, target)
+      ? target
+      : homeForRole(payload.user.role);
+  }
+
   const goToWorkspace = useCallback(
-    (target: string) => {
+    async (target: string) => {
       if (redirectTimerRef.current) {
         window.clearTimeout(redirectTimerRef.current);
       }
+      setRedirectBlocked("");
+      let safeTarget = target;
 
-      router.replace(target);
+      try {
+        safeTarget = await verifiedWorkspaceTarget(target);
+      } catch (error) {
+        setRedirectBlocked(
+          error instanceof Error
+            ? error.message
+            : "Your secure workspace session is still being repaired.",
+        );
+        return;
+      }
+
+      router.replace(safeTarget);
       redirectTimerRef.current = window.setTimeout(() => {
-        if (window.location.pathname !== target) {
-          window.location.assign(target);
+        if (window.location.pathname !== safeTarget) {
+          window.location.assign(safeTarget);
         }
-      }, 450);
+      }, 900);
     },
     [router],
   );
@@ -228,25 +265,25 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
     if (!user || isReset) return;
 
     if (user.onboardingCompleted) {
-      goToWorkspace(homeForRole(user.role));
+      void goToWorkspace(homeForRole(user.role));
       return;
     }
 
     if (user.role === "student") {
-      goToWorkspace("/onboarding/student");
+      void goToWorkspace("/onboarding/student");
       return;
     }
 
     if (user.role === "teacher") {
-      goToWorkspace("/onboarding/teacher");
+      void goToWorkspace("/onboarding/teacher");
       return;
     }
 
-    goToWorkspace(homeForRole(user.role));
+    void goToWorkspace(homeForRole(user.role));
   }, [goToWorkspace, isReset, user]);
 
   async function finish(result: AuthSessionResult) {
-    goToWorkspace(targetForSession(result));
+    await goToWorkspace(targetForSession(result));
   }
 
   function switchMode() {
@@ -286,6 +323,42 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!isReset && redirectBlocked) {
+    return (
+      <>
+        <PublicNavbar />
+        <main className="relative isolate min-h-dvh overflow-hidden px-4 pb-8 pt-28 text-white sm:px-6 lg:pt-32">
+          <AuthBackdrop />
+          <div className="mx-auto grid min-h-[calc(100dvh-9rem)] w-full max-w-6xl items-center gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+            <AuthVisual reducedMotion={reducedMotion} />
+            <div className="mx-auto w-full max-w-sm rounded-[2rem] border border-white/60 bg-white/88 p-6 text-center text-slate-950 shadow-[0_28px_90px_-38px_rgba(34,211,238,0.9)] backdrop-blur-2xl lg:mx-0 lg:justify-self-end">
+              <p className="text-lg font-semibold">Session needs one refresh</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                {redirectBlocked}
+              </p>
+              <div className="mt-5 grid gap-2">
+                <Button onClick={() => window.location.reload()}>
+                  Repair session <ArrowRight />
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    setRedirectBlocked("");
+                    if (user) {
+                      await goToWorkspace(homeForRole(user.role));
+                    }
+                  }}
+                >
+                  Continue again
+                </Button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </>
+    );
   }
 
   if (!isReset && (loading || user)) {
