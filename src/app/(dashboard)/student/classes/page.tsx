@@ -9,8 +9,8 @@ export default async function StudentClassesPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Classes"
-        title="Your classrooms and classwork."
-        description="See the classes your teacher added you to, plus posts, assignments, and materials."
+        title="Your classrooms and class discovery."
+        description="Open enrolled classrooms, request suggested sections, and keep pending approvals in one organized view."
       />
       <StudentClassesPanel classes={data.classes} />
     </div>

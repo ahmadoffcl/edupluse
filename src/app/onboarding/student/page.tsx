@@ -1,4 +1,5 @@
 import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
+import { getDashboardData } from "@/lib/dashboard/server-data";
 
 const studentSteps = [
   {
@@ -44,7 +45,9 @@ const studentSteps = [
   },
 ];
 
-export default function StudentOnboardingPage() {
+export default async function StudentOnboardingPage() {
+  const data = await getDashboardData();
+
   return (
     <OnboardingFlow
       audience="student"
@@ -52,6 +55,15 @@ export default function StudentOnboardingPage() {
       description="A focused setup flow that connects your academic identity, classes, and public username."
       finishHref="/student"
       steps={studentSteps}
+      classOptions={data.classes.map((classRecord) => ({
+        id: classRecord.id,
+        name: classRecord.name,
+        description: classRecord.description,
+        section: classRecord.section,
+        teacherName: classRecord.teacherName,
+        enrollmentStatus: classRecord.enrollmentStatus,
+        suggestedReason: classRecord.suggestedReason,
+      }))}
     />
   );
 }

@@ -35,7 +35,13 @@ export type StudentClassRow = {
   description: string | null;
   bannerUrl: string | null;
   section: string | null;
+  term: string | null;
+  capacity: number | null;
+  scheduleNote: string | null;
   teacherName: string | null;
+  enrollmentStatus: "enrolled" | "pending" | "suggested" | "available";
+  joinRequestId: string | null;
+  suggestedReason: string | null;
   assignmentCount: number;
   resourceCount: number;
   announcementCount: number;
@@ -96,10 +102,80 @@ function isMissingColumn(error: unknown, column: string) {
   );
 }
 
+function isMissingRelation(error: unknown, relationName: string) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+
+  return (
+    candidate.code === "42P01" ||
+    candidate.code === "PGRST205" ||
+    Boolean(candidate.message?.includes(relationName))
+  );
+}
+
+function streakFromActivity(rows: DbRecord[]) {
+  const dates = new Set(
+    rows
+      .map((row) => stringValue(row.created_at))
+      .filter(Boolean)
+      .map((value) => new Date(value))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .map((date) => date.toISOString().slice(0, 10)),
+  );
+  let cursor = new Date();
+  let streak = 0;
+
+  while (dates.has(cursor.toISOString().slice(0, 10))) {
+    streak += 1;
+    cursor = new Date(cursor.getTime() - 86_400_000);
+  }
+
+  return streak;
+}
+
+function normalizedText(value: unknown) {
+  return stringValue(value).trim().toLowerCase();
+}
+
+function suggestionForClass(classRecord: DbRecord, studentSettings: DbRecord) {
+  const onboarding = recordValue(studentSettings.studentOnboarding);
+  const academic = recordValue(onboarding.academic);
+  const details = recordValue(onboarding.details);
+  const department = normalizedText(academic.departmentName);
+  const program = normalizedText(academic.program);
+  const section = normalizedText(details.section);
+  const classSection = normalizedText(classRecord.section);
+  const haystack = [
+    classRecord.name,
+    classRecord.description,
+    classRecord.grade_level,
+    classRecord.batch,
+    classRecord.term,
+  ]
+    .map(normalizedText)
+    .filter(Boolean)
+    .join(" ");
+
+  if (section && classSection && section === classSection) {
+    return `Matches section ${stringValue(classRecord.section)}`;
+  }
+
+  if (department && haystack.includes(department)) {
+    return `Matches ${stringValue(academic.departmentName)}`;
+  }
+
+  if (program && haystack.includes(program)) {
+    return `Matches ${stringValue(academic.program)}`;
+  }
+
+  return null;
+}
+
 export type DashboardData = {
   connected: boolean;
   metrics: Metric[];
   totalXp: number;
+  currentStreak: number;
   engagementChart: Array<{ label: string; engagement: number }>;
   attendanceChart: Array<{ label: string; present: number; absent: number }>;
   assignmentStatusChart: Array<{ name: string; value: number }>;
@@ -131,6 +207,7 @@ function emptyData(): DashboardData {
     connected: false,
     metrics: emptyMetrics,
     totalXp: 0,
+    currentStreak: 0,
     engagementChart: [],
     attendanceChart: [],
     assignmentStatusChart: [],
@@ -160,12 +237,26 @@ export async function getDashboardData(): Promise<DashboardData> {
   const currentSession = session;
   const db = supabase;
 
-  const { data: profile } = await db
+  let profileResult = await db
     .from("profiles")
-    .select("id")
+    .select("id,profile_settings")
     .eq("firebase_uid", currentSession.uid)
     .maybeSingle();
-  const profileId = stringValue((profile as DbRecord | null)?.id);
+
+  if (
+    profileResult.error &&
+    isMissingColumn(profileResult.error, "profile_settings")
+  ) {
+    profileResult = await db
+      .from("profiles")
+      .select("id")
+      .eq("firebase_uid", currentSession.uid)
+      .maybeSingle();
+  }
+
+  const profile = (profileResult.data ?? null) as DbRecord | null;
+  const profileId = stringValue(profile?.id);
+  const profileSettings = recordValue(profile?.profile_settings);
   const isStudent = currentSession.role === "student";
 
   const initialEnrollmentResult =
@@ -210,6 +301,60 @@ export async function getDashboardData(): Promise<DashboardData> {
   const enrolledClassIds = enrollmentRows
     .map((row) => stringValue(row.class_id))
     .filter(Boolean);
+
+  async function loadDiscoverableClasses(select: string, activeOnly = true) {
+    const query = db
+      .from("classes")
+      .select(select)
+      .eq("org_id", currentSession.orgId);
+
+    if (activeOnly) query.is("archived_at", null);
+
+    return await query.order("created_at", { ascending: false }).limit(1000);
+  }
+
+  let discoverableClassRows: DbRecord[] = [];
+  if (isStudent && profileId) {
+    let discoverableClassesResult = await loadDiscoverableClasses(
+      "id,name,description,banner_url,section,grade_level,batch,term,capacity,schedule_note,teacher_id,profiles!classes_teacher_id_fkey(display_name)",
+    );
+
+    if (
+      discoverableClassesResult.error &&
+      (isMissingColumn(discoverableClassesResult.error, "description") ||
+        isMissingColumn(discoverableClassesResult.error, "banner_url") ||
+        isMissingColumn(discoverableClassesResult.error, "archived_at"))
+    ) {
+      discoverableClassesResult = await loadDiscoverableClasses(
+        "id,name,section,teacher_id,profiles!classes_teacher_id_fkey(display_name)",
+        false,
+      );
+    }
+
+    if (!discoverableClassesResult.error) {
+      discoverableClassRows = (discoverableClassesResult.data ??
+        []) as unknown as DbRecord[];
+    }
+  }
+
+  let joinRequestRows: DbRecord[] = [];
+  if (isStudent && profileId) {
+    const joinRequestsResult = await db
+      .from("class_join_requests")
+      .select("id,class_id,status")
+      .eq("org_id", currentSession.orgId)
+      .eq("student_id", profileId)
+      .order("requested_at", { ascending: false })
+      .limit(1000);
+
+    if (!joinRequestsResult.error) {
+      joinRequestRows = (joinRequestsResult.data ?? []) as DbRecord[];
+    } else if (
+      !isMissingRelation(joinRequestsResult.error, "class_join_requests")
+    ) {
+      joinRequestRows = [];
+    }
+  }
 
   let classmateRows: DbRecord[] = [];
   if (isStudent && enrolledClassIds.length > 0) {
@@ -321,7 +466,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       .limit(8),
     db
       .from("gamification_events")
-      .select("xp,created_at,profiles(display_name)")
+      .select("profile_id,xp,created_at,profiles(display_name)")
       .eq("org_id", currentSession.orgId)
       .limit(500),
     profileId
@@ -415,6 +560,17 @@ export async function getDashboardData(): Promise<DashboardData> {
       .map((row) => stringValue(row.profile_id))
       .filter(Boolean),
   ).size;
+  const currentGamificationRows =
+    isStudent && profileId
+      ? gamificationRows.filter(
+          (row) => stringValue(row.profile_id) === profileId,
+        )
+      : gamificationRows;
+  const totalXp = currentGamificationRows.reduce(
+    (total, row) => total + numberValue(row.xp),
+    0,
+  );
+  const currentStreak = streakFromActivity(currentGamificationRows);
 
   const metrics: Metric[] = [
     {
@@ -437,15 +593,11 @@ export async function getDashboardData(): Promise<DashboardData> {
     },
     {
       label: "XP events",
-      value: `${gamificationRows.length}`,
+      value: `${currentGamificationRows.length}`,
       delta: "Learning activity",
       tone: "warning",
     },
   ];
-  const totalXp = gamificationRows.reduce(
-    (total, row) => total + numberValue(row.xp),
-    0,
-  );
 
   const assignments: Assignment[] = assignmentRows.map((row) => {
     const submissions = asRows(row.submissions);
@@ -570,34 +722,69 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const notes: Note[] = visibleResourceRows.map(resourceToNote);
 
-  const classes: StudentClassRow[] = enrollmentRows
-    .map((row) => {
-      const classRecord = relation(row, "classes");
-      const classId = stringValue(classRecord?.id) || stringValue(row.class_id);
+  const classRecordsById = new Map<string, DbRecord>();
+  for (const row of enrollmentRows) {
+    const classRecord = relation(row, "classes");
+    const classId = stringValue(classRecord?.id) || stringValue(row.class_id);
+    if (classId && classRecord) classRecordsById.set(classId, classRecord);
+  }
+  for (const row of discoverableClassRows) {
+    const classId = stringValue(row.id);
+    if (classId) classRecordsById.set(classId, row);
+  }
+
+  const joinRequestsByClass = new Map(
+    joinRequestRows
+      .map((row) => [stringValue(row.class_id), row] as const)
+      .filter(([classId]) => Boolean(classId)),
+  );
+
+  const classes: StudentClassRow[] = Array.from(classRecordsById.entries())
+    .map(([classId, classRecord]) => {
       if (!classId) return null;
 
-      const teacher = classRecord ? relation(classRecord, "profiles") : null;
-      const classResources = visibleResourceRows.filter(
-        (resource) => stringValue(resource.class_id) === classId,
-      );
-      const classAnnouncements = visibleAnnouncementRows.filter(
-        (announcement) => stringValue(announcement.class_id) === classId,
-      );
-      const classAssignments = assignments.filter(
-        (assignment) => assignment.classId === classId,
-      );
-      const classmates = classmateRows
-        .filter((classmate) => stringValue(classmate.class_id) === classId)
-        .map((classmate) => {
-          const person = relation(classmate, "profiles");
-          return {
-            id: stringValue(person?.id),
-            name: stringValue(person?.display_name, "Student"),
-            username: stringValue(person?.username) || null,
-            email: stringValue(person?.email) || null,
-          };
-        })
-        .filter((classmate) => Boolean(classmate.id));
+      const isEnrolled = enrolledClassIds.includes(classId);
+      const requestRow = joinRequestsByClass.get(classId);
+      const requestStatus = stringValue(requestRow?.status);
+      const suggestedReason = isEnrolled
+        ? null
+        : suggestionForClass(classRecord, profileSettings);
+      const enrollmentStatus: StudentClassRow["enrollmentStatus"] = isEnrolled
+        ? "enrolled"
+        : requestStatus === "pending"
+          ? "pending"
+          : suggestedReason
+            ? "suggested"
+            : "available";
+
+      const teacher = relation(classRecord, "profiles");
+      const classResources = isEnrolled
+        ? visibleResourceRows.filter(
+            (resource) => stringValue(resource.class_id) === classId,
+          )
+        : [];
+      const classAnnouncements = isEnrolled
+        ? visibleAnnouncementRows.filter(
+            (announcement) => stringValue(announcement.class_id) === classId,
+          )
+        : [];
+      const classAssignments = isEnrolled
+        ? assignments.filter((assignment) => assignment.classId === classId)
+        : [];
+      const classmates = isEnrolled
+        ? classmateRows
+            .filter((classmate) => stringValue(classmate.class_id) === classId)
+            .map((classmate) => {
+              const person = relation(classmate, "profiles");
+              return {
+                id: stringValue(person?.id),
+                name: stringValue(person?.display_name, "Student"),
+                username: stringValue(person?.username) || null,
+                email: stringValue(person?.email) || null,
+              };
+            })
+            .filter((classmate) => Boolean(classmate.id))
+        : [];
 
       return {
         id: classId,
@@ -605,7 +792,16 @@ export async function getDashboardData(): Promise<DashboardData> {
         description: stringValue(classRecord?.description) || null,
         bannerUrl: stringValue(classRecord?.banner_url) || null,
         section: stringValue(classRecord?.section) || null,
+        term: stringValue(classRecord?.term) || null,
+        capacity:
+          typeof classRecord?.capacity === "number"
+            ? numberValue(classRecord.capacity)
+            : null,
+        scheduleNote: stringValue(classRecord?.schedule_note) || null,
         teacherName: stringValue(teacher?.display_name) || null,
+        enrollmentStatus,
+        joinRequestId: stringValue(requestRow?.id) || null,
+        suggestedReason,
         assignmentCount: classAssignments.length,
         resourceCount: classResources.length,
         announcementCount: classAnnouncements.length,
@@ -622,7 +818,11 @@ export async function getDashboardData(): Promise<DashboardData> {
     })
     .filter((classRecord): classRecord is StudentClassRow =>
       Boolean(classRecord),
-    );
+    )
+    .sort((a, b) => {
+      const order = { enrolled: 0, pending: 1, suggested: 2, available: 3 };
+      return order[a.enrollmentStatus] - order[b.enrollmentStatus];
+    });
 
   const schedule: ScheduleItem[] = visibleEventRows.map((row) => {
     const date = new Date(stringValue(row.starts_at, new Date().toISOString()));
@@ -790,6 +990,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     connected: true,
     metrics,
     totalXp,
+    currentStreak,
     engagementChart,
     attendanceChart,
     assignmentStatusChart,

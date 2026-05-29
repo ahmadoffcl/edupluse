@@ -14,7 +14,7 @@ export default async function StudentClassDetailPage({
   const data = await getDashboardData();
   const classRecord = data.classes.find((item) => item.id === id);
 
-  if (!classRecord) {
+  if (!classRecord || classRecord.enrollmentStatus !== "enrolled") {
     notFound();
   }
 
@@ -27,9 +27,6 @@ export default async function StudentClassDetailPage({
       : "stream";
 
   return (
-    <StudentClassroomDetail
-      classRecord={classRecord}
-      initialTab={initialTab}
-    />
+    <StudentClassroomDetail classRecord={classRecord} initialTab={initialTab} />
   );
 }

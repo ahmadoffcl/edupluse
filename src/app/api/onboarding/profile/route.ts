@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentAppSession } from "@/lib/auth/server";
+import { requestClassJoins } from "@/lib/server/class-join-requests";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -15,6 +16,23 @@ const schema = z.object({
     .regex(/^@?[a-zA-Z0-9._]+$/)
     .optional(),
   bio: z.string().trim().max(180).optional(),
+  selectedClassIds: z.array(z.string().uuid()).max(25).optional().default([]),
+  academic: z
+    .object({
+      institutionName: z.string().trim().max(160).optional(),
+      departmentName: z.string().trim().max(120).optional(),
+      program: z.string().trim().max(120).optional(),
+      semesterYear: z.string().trim().max(80).optional(),
+    })
+    .optional(),
+  details: z
+    .object({
+      section: z.string().trim().max(80).optional(),
+      registrationNumber: z.string().trim().max(80).optional(),
+      studentId: z.string().trim().max(80).optional(),
+      campus: z.string().trim().max(120).optional(),
+    })
+    .optional(),
 });
 type SupabaseServiceClient = NonNullable<
   ReturnType<typeof getSupabaseServiceClient>
@@ -22,6 +40,12 @@ type SupabaseServiceClient = NonNullable<
 
 function cleanUsername(username?: string) {
   return username?.replace(/^@+/, "").toLowerCase();
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function isMissingSchemaError(error: unknown) {
@@ -57,7 +81,8 @@ function isMissingOptionalProfileColumn(error: unknown) {
   return (
     isMissingProfileColumn(error, "username") ||
     isMissingProfileColumn(error, "bio") ||
-    isMissingProfileColumn(error, "onboarding_completed_at")
+    isMissingProfileColumn(error, "onboarding_completed_at") ||
+    isMissingProfileColumn(error, "profile_settings")
   );
 }
 
@@ -76,6 +101,7 @@ async function createProfile({
   displayName,
   username,
   bio,
+  profileSettings,
 }: {
   supabase: SupabaseServiceClient;
   uid: string;
@@ -83,6 +109,7 @@ async function createProfile({
   displayName: string;
   username?: string;
   bio?: string;
+  profileSettings?: Record<string, unknown>;
 }) {
   const basePayload = {
     firebase_uid: uid,
@@ -94,6 +121,7 @@ async function createProfile({
     username: username ?? null,
     bio: bio ?? null,
     onboarding_completed_at: new Date().toISOString(),
+    ...(profileSettings ? { profile_settings: profileSettings } : {}),
   };
 
   let result = await supabase
@@ -121,18 +149,21 @@ async function updateProfile({
   displayName,
   username,
   bio,
+  profileSettings,
 }: {
   supabase: SupabaseServiceClient;
   profileId: string;
   displayName: string;
   username?: string;
   bio?: string;
+  profileSettings?: Record<string, unknown>;
 }) {
   const fullPayload = {
     display_name: displayName,
     username: username ?? null,
     bio: bio ?? null,
     onboarding_completed_at: new Date().toISOString(),
+    ...(profileSettings ? { profile_settings: profileSettings } : {}),
   };
 
   let result = await supabase
@@ -162,6 +193,9 @@ export async function POST(request: Request) {
     return setupPendingResponse();
   }
 
+  const currentSession = session;
+  const db = supabase;
+
   const rawBody = await request.json().catch(() => null);
   const parsedBody = schema.safeParse(rawBody);
 
@@ -173,12 +207,37 @@ export async function POST(request: Request) {
 
   const body = parsedBody.data;
   const username = cleanUsername(body.username);
+  const onboardingSettings =
+    currentSession.role === "student"
+      ? {
+          academic: body.academic ?? {},
+          details: body.details ?? {},
+          completedAt: new Date().toISOString(),
+        }
+      : null;
 
-  const { data: currentProfile, error: currentProfileError } = await supabase
+  let currentProfileResult = await supabase
     .from("profiles")
-    .select("id")
-    .eq("firebase_uid", session.uid)
+    .select("id,profile_settings")
+    .eq("firebase_uid", currentSession.uid)
     .maybeSingle();
+
+  if (
+    currentProfileResult.error &&
+    isMissingProfileColumn(currentProfileResult.error, "profile_settings")
+  ) {
+    currentProfileResult = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("firebase_uid", currentSession.uid)
+      .maybeSingle();
+  }
+
+  const currentProfile = currentProfileResult.data as {
+    id: string;
+    profile_settings?: unknown;
+  } | null;
+  const currentProfileError = currentProfileResult.error;
 
   if (currentProfileError) {
     if (isMissingSchemaError(currentProfileError)) {
@@ -189,6 +248,23 @@ export async function POST(request: Request) {
       { error: "Unable to load your profile." },
       { status: 500 },
     );
+  }
+
+  async function requestSelectedClasses(profileId: string) {
+    if (
+      currentSession.role !== "student" ||
+      body.selectedClassIds.length === 0
+    ) {
+      return;
+    }
+
+    await requestClassJoins({
+      supabase: db,
+      orgId: currentSession.orgId,
+      studentId: profileId,
+      studentName: body.displayName ?? currentSession.displayName,
+      classIds: body.selectedClassIds,
+    });
   }
 
   if (!currentProfile) {
@@ -255,6 +331,9 @@ export async function POST(request: Request) {
         displayName: body.displayName ?? session.displayName,
         username,
         bio: body.bio,
+        profileSettings: onboardingSettings
+          ? { studentOnboarding: onboardingSettings }
+          : undefined,
       });
     } catch (error) {
       if (isMissingSchemaError(error)) {
@@ -289,6 +368,8 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
+
+    await requestSelectedClasses(createdProfileId);
 
     return NextResponse.json({ ok: true });
   }
@@ -330,6 +411,12 @@ export async function POST(request: Request) {
       displayName: body.displayName ?? session.displayName,
       username,
       bio: body.bio,
+      profileSettings: onboardingSettings
+        ? {
+            ...recordValue(currentProfile.profile_settings),
+            studentOnboarding: onboardingSettings,
+          }
+        : undefined,
     });
   } catch (error) {
     if (isMissingSchemaError(error)) {
@@ -341,6 +428,8 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+
+  await requestSelectedClasses(currentProfile.id);
 
   return NextResponse.json({ ok: true });
 }

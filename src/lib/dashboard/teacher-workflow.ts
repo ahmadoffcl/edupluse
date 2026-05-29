@@ -1,5 +1,6 @@
 import "server-only";
 import { getCurrentAppSession } from "@/lib/auth/server";
+import { isMissingClassJoinRequestTable } from "@/lib/server/class-join-requests";
 import { isTeacherRole } from "@/lib/server/workflow-auth";
 import {
   engagementHeavyPerformance,
@@ -205,6 +206,17 @@ export type TeacherCalendarEventRow = {
   endsAt: string | null;
 };
 
+export type TeacherClassJoinRequestRow = {
+  id: string;
+  classId: string;
+  studentId: string;
+  studentName: string;
+  studentUsername: string | null;
+  studentEmail: string | null;
+  status: string;
+  requestedAt: string;
+};
+
 export type TeacherProfileSettings = {
   displayName: string;
   email: string | null;
@@ -231,6 +243,7 @@ export type TeacherWorkflowData = {
   attendanceHistory: TeacherAttendanceRow[];
   announcements: TeacherAnnouncementRow[];
   calendarEvents: TeacherCalendarEventRow[];
+  joinRequests: TeacherClassJoinRequestRow[];
   profile: TeacherProfileSettings | null;
   notes: Note[];
   assignments: Assignment[];
@@ -264,6 +277,7 @@ function emptyData(): TeacherWorkflowData {
     attendanceHistory: [],
     announcements: [],
     calendarEvents: [],
+    joinRequests: [],
     profile: null,
     notes: [],
     assignments: [],
@@ -485,6 +499,7 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
     eventsResult,
     announcementsResult,
     messagesResult,
+    joinRequestsResult,
   ] = await Promise.all([
     db
       .from("subjects")
@@ -544,6 +559,12 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
       .eq("org_id", currentSession.orgId)
       .order("created_at", { ascending: false })
       .limit(80),
+    db
+      .from("class_join_requests")
+      .select("id,class_id,student_id,status,requested_at")
+      .eq("org_id", currentSession.orgId)
+      .order("requested_at", { ascending: false })
+      .limit(300),
   ]);
 
   const subjects = ((subjectsResult.data ?? []) as DbRecord[])
@@ -634,6 +655,13 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
       return canSeeAllClasses || visibleClassIds.has(classId);
     },
   );
+  const joinRequestRowsRaw =
+    !joinRequestsResult.error ||
+    isMissingClassJoinRequestTable(joinRequestsResult.error)
+      ? (((joinRequestsResult.data ?? []) as DbRecord[]).filter((row) =>
+          filterByVisibleClass(row),
+        ) as DbRecord[])
+      : [];
 
   const signedUrls = await Promise.all(
     resourceRowsRaw.map(async (row) => {
@@ -915,6 +943,25 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
       endsAt: stringValue(row.ends_at) || null,
     };
   });
+  const availableStudentsById = new Map(
+    availableStudents.map((student) => [student.id, student]),
+  );
+  const joinRequests: TeacherClassJoinRequestRow[] = joinRequestRowsRaw.map(
+    (row) => {
+      const studentId = stringValue(row.student_id);
+      const student = availableStudentsById.get(studentId);
+      return {
+        id: stringValue(row.id),
+        classId: stringValue(row.class_id),
+        studentId,
+        studentName: student?.name ?? "Student",
+        studentUsername: student?.username ?? null,
+        studentEmail: student?.email ?? null,
+        status: stringValue(row.status, "pending"),
+        requestedAt: stringValue(row.requested_at),
+      };
+    },
+  );
 
   const messages: MessageThread[] = messageRowsRaw.slice(0, 8).map((row) => {
     const thread = relation(row, "message_threads");
@@ -1038,6 +1085,7 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
     attendanceHistory,
     announcements,
     calendarEvents,
+    joinRequests,
     profile: teacherProfileRecord
       ? {
           displayName: stringValue(teacherProfileRecord.display_name),

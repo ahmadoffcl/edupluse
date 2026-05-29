@@ -30,6 +30,7 @@ type NotificationItem = {
   kind: string;
   readAt: string | null;
   createdAt: string;
+  actionUrl?: string | null;
 };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -40,7 +41,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [routePending, setRoutePending] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | "unsupported"
+  >("unsupported");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const notificationsLoadedRef = useRef(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setRoutePending(false), 80);
+    return () => window.clearTimeout(timer);
+  }, [pathname]);
 
   useEffect(() => {
     if (loading) return;
@@ -88,6 +99,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      const timer = window.setTimeout(() => {
+        setNotificationPermission(window.Notification.permission);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+
+    return undefined;
+  }, []);
+
+  useEffect(() => {
     if (!user) return;
 
     let cancelled = false;
@@ -101,7 +123,48 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         } | null;
 
         if (!cancelled) {
-          setNotifications(payload?.notifications ?? []);
+          const nextNotifications = payload?.notifications ?? [];
+          setNotifications(nextNotifications);
+
+          if (
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            window.Notification.permission === "granted"
+          ) {
+            const notifiedIds = new Set(
+              (window.localStorage.getItem("edupulse.notified.ids") ?? "")
+                .split(",")
+                .filter(Boolean),
+            );
+
+            for (const item of nextNotifications) {
+              if (
+                !notificationsLoadedRef.current ||
+                item.readAt ||
+                notifiedIds.has(item.id)
+              ) {
+                notifiedIds.add(item.id);
+                continue;
+              }
+
+              const browserNotification = new window.Notification(item.title, {
+                body: item.body,
+                tag: item.id,
+              });
+              browserNotification.onclick = () => {
+                window.focus();
+                if (item.actionUrl) router.push(item.actionUrl);
+              };
+              notifiedIds.add(item.id);
+            }
+
+            window.localStorage.setItem(
+              "edupulse.notified.ids",
+              Array.from(notifiedIds).slice(-200).join(","),
+            );
+          }
+
+          notificationsLoadedRef.current = true;
         }
       } catch {
         if (!cancelled) setNotifications([]);
@@ -114,12 +177,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [user]);
+  }, [router, user]);
+
+  async function enableDeviceNotifications() {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      return;
+    }
+
+    const permission = await window.Notification.requestPermission();
+    setNotificationPermission(permission);
+  }
 
   function openSearchResult(href: string) {
     setSearchOpen(false);
     setSearchQuery("");
+    if (href !== pathname) setRoutePending(true);
     router.push(href);
+  }
+
+  function beginRouteChange(href: string) {
+    if (href !== pathname) setRoutePending(true);
+    setOpenMobile(false);
   }
 
   const unreadCount = notifications.filter((item) => !item.readAt).length;
@@ -155,6 +234,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link
             href={homeForRole(user.role)}
             className="flex items-center gap-3"
+            onClick={() => beginRouteChange(homeForRole(user.role))}
           >
             <BrandLogo showText={false} markClassName="size-11" />
             <span>
@@ -183,6 +263,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => beginRouteChange(item.href)}
                 className={cn(
                   "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-muted-foreground motion-safe hover:bg-muted hover:text-foreground",
                   active &&
@@ -309,6 +390,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         {unreadCount} new
                       </Badge>
                     </div>
+                    {notificationPermission === "default" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mx-3 mb-2 w-[calc(100%-1.5rem)]"
+                        onClick={enableDeviceNotifications}
+                      >
+                        <Bell /> Enable device alerts
+                      </Button>
+                    ) : null}
                     <div className="max-h-80 space-y-2 overflow-y-auto p-1">
                       {notifications.length === 0 ? (
                         <div className="rounded-2xl bg-muted p-3 text-sm">
@@ -320,9 +412,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         </div>
                       ) : (
                         notifications.map((item) => (
-                          <div
+                          <button
                             key={item.id}
-                            className="rounded-2xl border border-border bg-background/70 p-3 text-sm"
+                            type="button"
+                            className="w-full rounded-2xl border border-border bg-background/70 p-3 text-left text-sm transition hover:bg-muted"
+                            onClick={() => {
+                              if (item.actionUrl) {
+                                beginRouteChange(item.actionUrl);
+                                router.push(item.actionUrl);
+                              }
+                            }}
                           >
                             <div className="flex items-start justify-between gap-3">
                               <p className="font-semibold">{item.title}</p>
@@ -331,7 +430,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                             <p className="mt-1 text-xs leading-5 text-muted-foreground">
                               {item.body}
                             </p>
-                          </div>
+                          </button>
                         ))
                       )}
                     </div>
@@ -393,7 +492,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        {children}
+        {routePending ? <RouteSkeleton /> : null}
+        <div
+          className={cn(
+            "transition-opacity duration-150",
+            routePending && "pointer-events-none opacity-0",
+          )}
+        >
+          {children}
+        </div>
       </main>
 
       <nav className="glass-panel fixed bottom-4 left-1/2 z-50 flex w-[min(calc(100%-2rem),440px)] -translate-x-1/2 items-center justify-between rounded-full px-2 py-2 lg:hidden">
@@ -406,6 +513,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               key={item.href}
               href={item.href}
               aria-label={item.title}
+              onClick={() => beginRouteChange(item.href)}
               className={cn(
                 "grid size-12 place-items-center rounded-full text-muted-foreground motion-safe hover:bg-muted hover:text-foreground",
                 active && "bg-primary text-primary-foreground",
@@ -416,6 +524,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           );
         })}
       </nav>
+    </div>
+  );
+}
+
+function RouteSkeleton() {
+  return (
+    <div className="fixed inset-x-3 bottom-24 top-4 z-20 rounded-[1.5rem] border border-border/70 bg-background/94 p-4 shadow-2xl backdrop-blur-xl sm:inset-x-4 sm:bottom-28 sm:top-6 lg:bottom-10 lg:left-80 lg:right-6 lg:top-24">
+      <div className="h-full animate-pulse space-y-4 overflow-hidden">
+        <div className="h-24 rounded-[1.5rem] bg-muted" />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((item) => (
+            <div key={item} className="h-28 rounded-3xl bg-muted" />
+          ))}
+        </div>
+        <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
+          <div className="space-y-3">
+            <div className="h-56 rounded-[1.5rem] bg-muted" />
+            <div className="h-44 rounded-[1.5rem] bg-muted" />
+          </div>
+          <div className="hidden h-80 rounded-[1.5rem] bg-muted xl:block" />
+        </div>
+      </div>
     </div>
   );
 }

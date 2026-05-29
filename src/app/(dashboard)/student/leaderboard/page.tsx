@@ -16,10 +16,7 @@ export default async function StudentLeaderboardPage() {
         description="Gamification is designed to reward consistency and mastery without making learning feel childish."
       />
       <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
-        <GamificationPanel
-          totalXp={data.totalXp}
-          streak={data.leaderboard[0]?.streak ?? 0}
-        />
+        <GamificationPanel totalXp={data.totalXp} streak={data.currentStreak} />
         <LeaderboardPanel items={data.leaderboard} />
       </div>
     </div>

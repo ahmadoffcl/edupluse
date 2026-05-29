@@ -31,6 +31,27 @@ type AssignmentAttachment = {
   mimeType: string;
 };
 
+function deadlineLabel(value?: string | null) {
+  if (!value) return "No deadline set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Deadline set";
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function reminderTime(dueAt: string, offsetMs: number) {
+  const dueDate = new Date(dueAt);
+  if (Number.isNaN(dueDate.getTime())) return null;
+  const scheduled = new Date(dueDate.getTime() - offsetMs);
+  if (scheduled.getTime() <= Date.now()) return null;
+  return scheduled.toISOString();
+}
+
 function textValue(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
@@ -185,13 +206,66 @@ export async function POST(request: Request) {
     .eq("class_id", body.classId);
   const notifications = (
     (enrollments ?? []) as Array<{ student_id: string }>
-  ).map((enrollment) => ({
-    org_id: context.session.orgId,
-    recipient_id: enrollment.student_id,
-    title: "New assignment",
-    body: `${body.title} has been posted.`,
-    kind: "assignment",
-  }));
+  ).flatMap((enrollment) => {
+    type AssignmentNotification = {
+      org_id: string;
+      recipient_id: string;
+      title: string;
+      body: string;
+      kind: string;
+      action_url: string;
+      metadata: {
+        assignmentId: string;
+        classId: string;
+        dueAt: string | null | undefined;
+      };
+      scheduled_for?: string;
+    };
+    const actionUrl = `/student/assignments/${data.id}`;
+    const base = {
+      org_id: context.session.orgId,
+      recipient_id: enrollment.student_id,
+      action_url: actionUrl,
+      metadata: {
+        assignmentId: data.id,
+        classId: body.classId,
+        dueAt: body.dueAt,
+      },
+    };
+    const rows: AssignmentNotification[] = [
+      {
+        ...base,
+        title: "New assignment",
+        body: `${body.title} has been posted. Deadline: ${deadlineLabel(body.dueAt)}.`,
+        kind: "assignment",
+      },
+    ];
+
+    if (body.dueAt) {
+      const oneDay = reminderTime(body.dueAt, 24 * 60 * 60 * 1000);
+      const oneHour = reminderTime(body.dueAt, 60 * 60 * 1000);
+      if (oneDay) {
+        rows.push({
+          ...base,
+          title: "Assignment due tomorrow",
+          body: `${body.title} is due on ${deadlineLabel(body.dueAt)}.`,
+          kind: "assignment_reminder",
+          scheduled_for: oneDay,
+        });
+      }
+      if (oneHour) {
+        rows.push({
+          ...base,
+          title: "Assignment due in 1 hour",
+          body: `${body.title} is due at ${deadlineLabel(body.dueAt)}.`,
+          kind: "assignment_reminder",
+          scheduled_for: oneHour,
+        });
+      }
+    }
+
+    return rows;
+  });
 
   if (notifications.length) {
     const { error: notificationError } = await context.supabase
@@ -199,7 +273,23 @@ export async function POST(request: Request) {
       .insert(notifications);
 
     if (notificationError) {
-      console.warn("Assignment notifications skipped", notificationError.code);
+      const fallbackNotifications = notifications.map((notification) => ({
+        org_id: notification.org_id,
+        recipient_id: notification.recipient_id,
+        title: notification.title,
+        body: notification.body,
+        kind: notification.kind,
+      }));
+      const { error: fallbackNotificationError } = await context.supabase
+        .from("notifications")
+        .insert(fallbackNotifications);
+
+      if (fallbackNotificationError) {
+        console.warn(
+          "Assignment notifications skipped",
+          fallbackNotificationError.code,
+        );
+      }
     }
   }
 

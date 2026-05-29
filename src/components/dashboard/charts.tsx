@@ -37,6 +37,31 @@ type DonutPoint = {
   value: number;
 };
 
+type BandPoint = {
+  name: string;
+  value: number;
+};
+
+type MomentumPoint = {
+  name: string;
+  performance: number;
+  submissions: number;
+  score: number;
+};
+
+type MetricPoint = {
+  name: string;
+  value: number;
+};
+
+function tooltipStyle() {
+  return {
+    background: "var(--popover)",
+    border: "1px solid var(--border)",
+    borderRadius: "18px",
+  };
+}
+
 export function EngagementChart({ data = [] }: { data?: EngagementPoint[] }) {
   return (
     <Card className="min-h-[360px]">
@@ -66,13 +91,7 @@ export function EngagementChart({ data = [] }: { data?: EngagementPoint[] }) {
                 <CartesianGrid strokeDasharray="4 8" stroke="var(--border)" />
                 <XAxis dataKey="label" stroke="var(--muted-foreground)" />
                 <YAxis stroke="var(--muted-foreground)" />
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--popover)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "18px",
-                  }}
-                />
+                <Tooltip contentStyle={tooltipStyle()} />
                 <Area
                   dataKey="engagement"
                   type="monotone"
@@ -112,13 +131,7 @@ export function AttendanceChart({ data = [] }: { data?: AttendancePoint[] }) {
                 <CartesianGrid strokeDasharray="4 8" stroke="var(--border)" />
                 <XAxis dataKey="label" stroke="var(--muted-foreground)" />
                 <YAxis stroke="var(--muted-foreground)" />
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--popover)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "18px",
-                  }}
-                />
+                <Tooltip contentStyle={tooltipStyle()} />
                 <Bar dataKey="present" radius={[10, 10, 4, 4]} fill="#7c9cff" />
                 <Bar dataKey="absent" radius={[10, 10, 4, 4]} fill="#ffb454" />
               </BarChart>
@@ -165,13 +178,7 @@ export function CompletionDonut({ data = [] }: { data?: DonutPoint[] }) {
                       />
                     ))}
                   </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      background: "var(--popover)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "18px",
-                    }}
-                  />
+                  <Tooltip contentStyle={tooltipStyle()} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -188,6 +195,154 @@ export function CompletionDonut({ data = [] }: { data?: DonutPoint[] }) {
               ))}
             </div>
           </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function PerformanceBandChart({ data = [] }: { data?: BandPoint[] }) {
+  return (
+    <Card className="min-h-[360px]">
+      <CardHeader>
+        <CardTitle>Performance Distribution</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {data.length === 0 ? (
+          <EmptyState
+            variant="activity"
+            message="No student performance distribution is available yet."
+          />
+        ) : (
+          <div className="h-64">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              initialDimension={chartInitialDimension}
+            >
+              <BarChart data={data}>
+                <CartesianGrid strokeDasharray="4 8" stroke="var(--border)" />
+                <XAxis dataKey="name" stroke="var(--muted-foreground)" />
+                <YAxis allowDecimals={false} stroke="var(--muted-foreground)" />
+                <Tooltip contentStyle={tooltipStyle()} />
+                <Bar dataKey="value" radius={[14, 14, 6, 6]}>
+                  {data.map((entry, index) => (
+                    <Cell
+                      key={entry.name}
+                      fill={palette[index % palette.length]}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function StudentMomentumChart({
+  data = [],
+}: {
+  data?: MomentumPoint[];
+}) {
+  return (
+    <Card className="min-h-[420px]">
+      <CardHeader>
+        <CardTitle>Student Momentum Graph</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {data.length === 0 ? (
+          <EmptyState
+            variant="leaderboard"
+            message="No student momentum chart data exists yet."
+          />
+        ) : (
+          <div className="h-80">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              initialDimension={{ width: 720, height: 320 }}
+            >
+              <BarChart
+                data={data}
+                layout="vertical"
+                margin={{ left: 12, right: 20 }}
+              >
+                <CartesianGrid strokeDasharray="4 8" stroke="var(--border)" />
+                <XAxis type="number" domain={[0, 100]} hide />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={112}
+                  stroke="var(--muted-foreground)"
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip contentStyle={tooltipStyle()} />
+                <Bar
+                  dataKey="performance"
+                  fill="#7c9cff"
+                  radius={[0, 12, 12, 0]}
+                  name="Performance"
+                />
+                <Bar
+                  dataKey="submissions"
+                  fill="#38bdf8"
+                  radius={[0, 12, 12, 0]}
+                  name="Submissions"
+                />
+                <Bar
+                  dataKey="score"
+                  fill="#ffb454"
+                  radius={[0, 12, 12, 0]}
+                  name="Score"
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function MetricBarChart({ data = [] }: { data?: MetricPoint[] }) {
+  return (
+    <Card className="min-h-[360px]">
+      <CardHeader>
+        <CardTitle>Workspace Signal Bars</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {data.length === 0 ? (
+          <EmptyState
+            variant="activity"
+            message="No workspace signal data is available yet."
+          />
+        ) : (
+          <div className="h-64">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              initialDimension={chartInitialDimension}
+            >
+              <BarChart data={data}>
+                <CartesianGrid strokeDasharray="4 8" stroke="var(--border)" />
+                <XAxis dataKey="name" stroke="var(--muted-foreground)" />
+                <YAxis allowDecimals={false} stroke="var(--muted-foreground)" />
+                <Tooltip contentStyle={tooltipStyle()} />
+                <Bar dataKey="value" radius={[14, 14, 6, 6]}>
+                  {data.map((entry, index) => (
+                    <Cell
+                      key={entry.name}
+                      fill={palette[index % palette.length]}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </CardContent>
     </Card>

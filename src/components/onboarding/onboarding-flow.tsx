@@ -5,12 +5,16 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
+  Check,
   CheckCircle2,
   Search,
   Upload,
+  UsersRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -30,30 +34,63 @@ type OnboardingStep = {
   emptyText?: string;
 };
 
+type OnboardingClassOption = {
+  id: string;
+  name: string;
+  description: string | null;
+  section: string | null;
+  teacherName: string | null;
+  enrollmentStatus: "enrolled" | "pending" | "suggested" | "available";
+  suggestedReason: string | null;
+};
+
 export function OnboardingFlow({
   audience,
   title,
   description,
   steps,
   finishHref,
+  classOptions = [],
 }: {
   audience: "student" | "teacher";
   title: string;
   description: string;
   steps: OnboardingStep[];
   finishHref: string;
+  classOptions?: OnboardingClassOption[];
 }) {
   const router = useRouter();
   const { user } = useAuth();
   const [active, setActive] = useState(0);
   const [busy, setBusy] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [selectedClassIds, setSelectedClassIds] = useState<Set<string>>(
+    new Set(),
+  );
   const progress = useMemo(
     () => Math.round(((active + 1) / steps.length) * 100),
     [active, steps.length],
   );
   const step = steps[active];
   const isLast = active === steps.length - 1;
+  const classSearch = valueFor("Search classes").trim().toLowerCase();
+  const filteredClassOptions = classOptions
+    .filter((classRecord) => classRecord.enrollmentStatus !== "enrolled")
+    .filter((classRecord) => {
+      if (!classSearch) return true;
+      return [
+        classRecord.name,
+        classRecord.description,
+        classRecord.section,
+        classRecord.teacherName,
+        classRecord.suggestedReason,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(classSearch);
+    })
+    .slice(0, 12);
 
   function fieldKey(stepTitle: string, fieldLabel: string) {
     return `${stepTitle}:${fieldLabel}`;
@@ -84,6 +121,25 @@ export function OnboardingFlow({
             valueFor("Teacher tagline") ||
             valueFor("Short introduction") ||
             undefined,
+          selectedClassIds: Array.from(selectedClassIds),
+          academic:
+            audience === "student"
+              ? {
+                  institutionName: valueFor("Institution name"),
+                  departmentName: valueFor("Department name"),
+                  program: valueFor("Degree or program"),
+                  semesterYear: valueFor("Semester or year"),
+                }
+              : undefined,
+          details:
+            audience === "student"
+              ? {
+                  section: valueFor("Section"),
+                  registrationNumber: valueFor("Registration number"),
+                  studentId: valueFor("Student ID"),
+                  campus: valueFor("Campus"),
+                }
+              : undefined,
         }),
       });
       const data = (await response.json().catch(() => null)) as {
@@ -184,24 +240,123 @@ export function OnboardingFlow({
               ))}
             </div>
 
-            {step.emptyTitle && (
-              <div className="mt-6 rounded-3xl border border-dashed border-border bg-background/50 p-5">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="grid size-11 place-items-center rounded-2xl bg-primary/12 text-primary">
-                    <Search className="size-5" />
+            {step.emptyTitle &&
+              !(
+                audience === "student" && step.title === "Initial enrollment"
+              ) && (
+                <div className="mt-6 rounded-3xl border border-dashed border-border bg-background/50 p-5">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="grid size-11 place-items-center rounded-2xl bg-primary/12 text-primary">
+                      <Search className="size-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">{step.emptyTitle}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {step.emptyText}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-semibold">{step.emptyTitle}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {step.emptyText}
-                    </p>
-                  </div>
+                  <Button variant="outline">
+                    <Upload /> Add later
+                  </Button>
                 </div>
-                <Button variant="outline">
-                  <Upload /> Add later
-                </Button>
+              )}
+
+            {audience === "student" && step.title === "Initial enrollment" ? (
+              <div className="mt-6 space-y-3">
+                {filteredClassOptions.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-border bg-background/50 p-5">
+                    <div className="flex items-center gap-3">
+                      <div className="grid size-11 place-items-center rounded-2xl bg-primary/12 text-primary">
+                        <Search className="size-5" />
+                      </div>
+                      <div>
+                        <p className="font-semibold">No matching classes yet</p>
+                        <p className="text-sm text-muted-foreground">
+                          You can finish setup now and request classes from your
+                          dashboard later.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {filteredClassOptions.map((classRecord) => {
+                      const selected = selectedClassIds.has(classRecord.id);
+                      return (
+                        <button
+                          key={classRecord.id}
+                          type="button"
+                          onClick={() =>
+                            setSelectedClassIds((current) => {
+                              const next = new Set(current);
+                              if (next.has(classRecord.id)) {
+                                next.delete(classRecord.id);
+                              } else {
+                                next.add(classRecord.id);
+                              }
+                              return next;
+                            })
+                          }
+                          className={cn(
+                            "rounded-3xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg",
+                            selected
+                              ? "border-primary bg-primary/10"
+                              : "border-border bg-background/60",
+                          )}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span className="grid size-11 place-items-center rounded-2xl bg-primary/12 text-primary">
+                              {selected ? (
+                                <Check className="size-5" />
+                              ) : (
+                                <BookOpen className="size-5" />
+                              )}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="line-clamp-1 font-semibold">
+                                {classRecord.name}
+                              </span>
+                              <span className="mt-1 block text-sm text-muted-foreground">
+                                {classRecord.teacherName ?? "Teacher"}{" "}
+                                {classRecord.section
+                                  ? `- Section ${classRecord.section}`
+                                  : ""}
+                              </span>
+                            </span>
+                            <Badge
+                              variant={
+                                classRecord.enrollmentStatus === "suggested"
+                                  ? "success"
+                                  : "secondary"
+                              }
+                            >
+                              {classRecord.enrollmentStatus === "pending"
+                                ? "Pending"
+                                : classRecord.enrollmentStatus === "suggested"
+                                  ? "Suggested"
+                                  : "Available"}
+                            </Badge>
+                          </div>
+                          <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">
+                            {classRecord.suggestedReason ??
+                              classRecord.description ??
+                              "Request access and your teacher can approve it."}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {selectedClassIds.size > 0 ? (
+                  <div className="flex items-center gap-2 rounded-2xl border border-primary/20 bg-primary/10 p-3 text-sm font-medium text-primary">
+                    <UsersRound className="size-4" />
+                    {selectedClassIds.size} class request
+                    {selectedClassIds.size === 1 ? "" : "s"} will be sent.
+                  </div>
+                ) : null}
               </div>
-            )}
+            ) : null}
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-between">
               <Button

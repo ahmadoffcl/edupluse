@@ -17,6 +17,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/dashboard/content-blocks";
+import {
+  FileDownloadButton,
+  FilePreviewButton,
+} from "@/components/files/file-preview-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -287,6 +291,15 @@ export function StudentNotesManager({
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {visibleNotes.map((note) => {
           const href = noteHref(note);
+          const previewFile = note.fileUrl
+            ? {
+                name: note.originalFilename ?? note.title,
+                mimeType: note.mimeType,
+                signedUrl: note.fileUrl,
+                downloadName: note.originalFilename ?? note.title,
+                source: "resource" as const,
+              }
+            : null;
           return (
             <Card
               key={note.id}
@@ -330,7 +343,12 @@ export function StudentNotesManager({
                   </Badge>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {href ? (
+                  {previewFile ? (
+                    <>
+                      <FilePreviewButton file={previewFile} />
+                      <FileDownloadButton file={previewFile} />
+                    </>
+                  ) : href ? (
                     <Button asChild size="sm" variant="outline">
                       <a href={href} target="_blank" rel="noreferrer">
                         {note.fileUrl ? <Download /> : <ExternalLink />}

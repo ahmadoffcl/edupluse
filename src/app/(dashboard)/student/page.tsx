@@ -37,7 +37,7 @@ export default async function StudentDashboardPage() {
         <aside className="space-y-4 sm:space-y-5 xl:sticky xl:top-24 xl:self-start">
           <GamificationPanel
             totalXp={data.totalXp}
-            streak={data.leaderboard[0]?.streak ?? 0}
+            streak={data.currentStreak}
           />
           <ActivityPanel items={data.activities} />
           <AiPanel />

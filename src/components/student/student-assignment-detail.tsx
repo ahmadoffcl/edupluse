@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
   CalendarClock,
@@ -62,6 +65,7 @@ export function StudentAssignmentDetail({
   assignment: Assignment;
   uploadFocused?: boolean;
 }) {
+  const reduceMotion = useReducedMotion();
   const canSubmit =
     assignment.status === "pending" || assignment.status === "late";
   const canUnsubmit =
@@ -84,8 +88,23 @@ export function StudentAssignmentDetail({
         </Link>
       </Button>
 
-      <section className="relative overflow-hidden rounded-[1.25rem] border border-border bg-[#06070b] p-4 text-white shadow-[var(--shadow-soft)] sm:rounded-[1.5rem] sm:p-6">
+      <motion.section
+        initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+        className="relative overflow-hidden rounded-[1.25rem] border border-border bg-[#06070b] p-4 text-white shadow-[var(--shadow-soft)] sm:rounded-[1.5rem] sm:p-6"
+      >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_10%,rgba(124,156,255,0.35),transparent_34%),radial-gradient(circle_at_86%_16%,rgba(255,180,84,0.24),transparent_30%),linear-gradient(135deg,#020309,#101422,#0b0d13)]" />
+        <motion.div
+          aria-hidden
+          className="absolute -right-16 -top-16 size-48 rounded-full border border-white/10 bg-white/10 blur-sm"
+          animate={
+            reduceMotion
+              ? undefined
+              : { y: [0, 10, 0], rotate: [0, 8, 0], opacity: [0.45, 0.7, 0.45] }
+          }
+          transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+        />
         <div className="relative z-10 max-w-4xl">
           <div className="flex flex-wrap gap-2">
             <Badge className="border-white/15 bg-white/10 text-white">
@@ -118,36 +137,46 @@ export function StudentAssignmentDetail({
             ))}
           </div>
         </div>
-      </section>
+      </motion.section>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_340px] xl:gap-6">
         <main className="space-y-4 sm:space-y-5">
-          <Card
-            className={uploadFocused ? "border-primary/30 bg-primary/5" : ""}
+          <motion.div
+            initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, delay: 0.05 }}
           >
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UploadCloud className="size-5 text-primary" />
-                Upload assignment
-              </CardTitle>
-              <CardDescription>
-                Submit a file, a note, or both. Your teacher will see the date
-                and time instantly.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {canSubmit ? (
-                <StudentAssignmentSubmissionForm assignment={assignment} />
-              ) : (
-                <div className="rounded-2xl border border-border bg-background/60 p-3 sm:p-4">
-                  <p className="font-semibold">Submission is closed</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    This assignment is already {assignment.status}.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            <Card
+              className={
+                uploadFocused
+                  ? "border-primary/30 bg-primary/5 shadow-[0_22px_80px_-50px_var(--primary)]"
+                  : ""
+              }
+            >
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <UploadCloud className="size-5 text-primary" />
+                  Upload assignment
+                </CardTitle>
+                <CardDescription>
+                  Submit a file, a note, or both. Your teacher will see the date
+                  and time instantly.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {canSubmit ? (
+                  <StudentAssignmentSubmissionForm assignment={assignment} />
+                ) : (
+                  <div className="rounded-2xl border border-border bg-background/60 p-3 sm:p-4">
+                    <p className="font-semibold">Submission is closed</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      This assignment is already {assignment.status}.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
 
           {assignment.attachments?.length ? (
             <Card>

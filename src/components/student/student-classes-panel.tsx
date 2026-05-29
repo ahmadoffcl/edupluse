@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   BookOpen,
   ChevronRight,
   ClipboardList,
+  Clock3,
   ExternalLink,
   FileText,
   Megaphone,
@@ -14,6 +16,7 @@ import {
   UserRound,
   UsersRound,
 } from "lucide-react";
+import { toast } from "sonner";
 import { ClassroomCard } from "@/components/classroom/classroom-card";
 import { EmptyState } from "@/components/dashboard/content-blocks";
 import {
@@ -49,37 +52,96 @@ export function StudentClassesPanel({
   classes: StudentClassRow[];
   compact?: boolean;
 }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
+  const [requestingId, setRequestingId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(
     compact ? 8 : CLASS_PAGE_SIZE,
   );
+  const enrolledClasses = useMemo(
+    () => classes.filter((item) => item.enrollmentStatus === "enrolled"),
+    [classes],
+  );
+  const panelClasses = compact
+    ? enrolledClasses.length > 0
+      ? enrolledClasses
+      : classes
+    : classes;
 
   const filteredClasses = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return classes;
+    if (!normalized) return panelClasses;
 
-    return classes.filter((classRecord) =>
+    return panelClasses.filter((classRecord) =>
       [
         classRecord.name,
         classRecord.section,
+        classRecord.term,
         classRecord.description,
         classRecord.teacherName,
+        classRecord.suggestedReason,
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
         .includes(normalized),
     );
-  }, [classes, query]);
+  }, [panelClasses, query]);
   const visibleClasses = compact
     ? filteredClasses.slice(0, 8)
     : filteredClasses.slice(0, visibleCount);
+  const statusCounts = {
+    enrolled: panelClasses.filter(
+      (item) => item.enrollmentStatus === "enrolled",
+    ).length,
+    pending: panelClasses.filter((item) => item.enrollmentStatus === "pending")
+      .length,
+    suggested: panelClasses.filter(
+      (item) => item.enrollmentStatus === "suggested",
+    ).length,
+    available: panelClasses.filter(
+      (item) => item.enrollmentStatus === "available",
+    ).length,
+  };
 
-  if (classes.length === 0) {
+  async function requestJoin(classId: string) {
+    setRequestingId(classId);
+    try {
+      const response = await fetch(
+        `/api/student/classes/${classId}/join-request`,
+        { method: "POST" },
+      );
+      const result = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
+
+      if (!response.ok || result?.ok === false) {
+        throw new Error(result?.error ?? "Unable to request this class.");
+      }
+
+      toast.success("Class request sent", {
+        description: "Your teacher can approve it from the class roster.",
+      });
+      router.refresh();
+    } catch (error) {
+      toast.error("Request failed", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setRequestingId(null);
+    }
+  }
+
+  if (panelClasses.length === 0) {
     return (
       <EmptyState
         variant="notes"
-        message="You have not been added to any class yet."
+        message={
+          compact
+            ? "No classrooms yet. Open Classes to discover available sections."
+            : "No classes are available yet. Ask a teacher or admin to create the first classroom."
+        }
       />
     );
   }
@@ -90,7 +152,9 @@ export function StudentClassesPanel({
         <div>
           <h2 className="text-xl font-semibold tracking-tight">My classes</h2>
           <p className="text-sm text-muted-foreground">
-            Classes your teacher added you to.
+            {compact
+              ? "Your active classrooms and next sections."
+              : "Enrolled, suggested, and available classes in your institute."}
           </p>
         </div>
         {compact ? (
@@ -122,6 +186,31 @@ export function StudentClassesPanel({
         </Card>
       ) : null}
 
+      {!compact ? (
+        <div className="grid gap-2 sm:grid-cols-4">
+          {[
+            ["Enrolled", statusCounts.enrolled, "default"],
+            ["Suggested", statusCounts.suggested, "success"],
+            ["Pending", statusCounts.pending, "warning"],
+            ["Available", statusCounts.available, "secondary"],
+          ].map(([label, value, variant]) => (
+            <div
+              key={String(label)}
+              className="rounded-2xl border border-border bg-card/70 p-3 shadow-sm"
+            >
+              <p className="text-xl font-semibold">{value}</p>
+              <Badge
+                variant={
+                  variant as "default" | "success" | "warning" | "secondary"
+                }
+              >
+                {label}
+              </Badge>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {filteredClasses.length === 0 ? (
         <EmptyState variant="notes" message="No classes match your search." />
       ) : null}
@@ -133,39 +222,100 @@ export function StudentClassesPanel({
             : "grid gap-4 md:grid-cols-2 xl:grid-cols-3"
         }
       >
-        {visibleClasses.map((classRecord) => (
-          <ClassroomCard
-            key={classRecord.id}
-            href={`/student/classes/${classRecord.id}`}
-            name={classRecord.name}
-            description={classRecord.description}
-            bannerUrl={classRecord.bannerUrl}
-            teacherName={classRecord.teacherName}
-            section={classRecord.section}
-            roleLabel="Enrolled"
-            nextDeadline={nextClassDeadline(classRecord)}
-            stats={[
-              {
-                label: "Work",
-                value: classRecord.assignmentCount,
-                icon: "assignments",
-              },
-              {
-                label: "Files",
-                value: classRecord.resourceCount,
-                icon: "materials",
-              },
-              {
-                label: "Posts",
-                value: classRecord.announcementCount,
-                icon: "posts",
-              },
-            ]}
-            className={
-              compact ? "min-w-[285px] snap-start sm:min-w-[330px]" : undefined
-            }
-          />
-        ))}
+        {visibleClasses.map((classRecord) => {
+          const enrolled = classRecord.enrollmentStatus === "enrolled";
+          const pending = classRecord.enrollmentStatus === "pending";
+          const suggested = classRecord.enrollmentStatus === "suggested";
+
+          return (
+            <ClassroomCard
+              key={classRecord.id}
+              href={enrolled ? `/student/classes/${classRecord.id}` : undefined}
+              name={classRecord.name}
+              description={
+                enrolled
+                  ? classRecord.description
+                  : (classRecord.suggestedReason ??
+                    classRecord.description ??
+                    "Request access to join this classroom.")
+              }
+              bannerUrl={classRecord.bannerUrl}
+              teacherName={classRecord.teacherName}
+              section={classRecord.section}
+              term={classRecord.term}
+              roleLabel={
+                enrolled
+                  ? "Enrolled"
+                  : pending
+                    ? "Pending"
+                    : suggested
+                      ? "Suggested"
+                      : "Available"
+              }
+              nextDeadline={enrolled ? nextClassDeadline(classRecord) : null}
+              stats={
+                enrolled
+                  ? [
+                      {
+                        label: "Work",
+                        value: classRecord.assignmentCount,
+                        icon: "assignments",
+                      },
+                      {
+                        label: "Files",
+                        value: classRecord.resourceCount,
+                        icon: "materials",
+                      },
+                      {
+                        label: "Posts",
+                        value: classRecord.announcementCount,
+                        icon: "posts",
+                      },
+                    ]
+                  : [
+                      {
+                        label: "Status",
+                        value: pending ? "Wait" : "Open",
+                        icon: "people",
+                      },
+                      {
+                        label: "Section",
+                        value: classRecord.section ?? "-",
+                        icon: "posts",
+                      },
+                      {
+                        label: "Seats",
+                        value: classRecord.capacity ?? "-",
+                        icon: "people",
+                      },
+                    ]
+              }
+              action={
+                !enrolled ? (
+                  <Button
+                    type="button"
+                    className="w-full"
+                    variant={pending ? "outline" : "default"}
+                    disabled={pending || requestingId === classRecord.id}
+                    onClick={() => requestJoin(classRecord.id)}
+                  >
+                    {pending ? <Clock3 /> : <UsersRound />}
+                    {pending
+                      ? "Waiting for approval"
+                      : requestingId === classRecord.id
+                        ? "Sending..."
+                        : "Request to join"}
+                  </Button>
+                ) : null
+              }
+              className={
+                compact
+                  ? "min-w-[285px] snap-start sm:min-w-[330px]"
+                  : undefined
+              }
+            />
+          );
+        })}
       </div>
 
       {!compact && filteredClasses.length > visibleClasses.length ? (

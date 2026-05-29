@@ -3,7 +3,15 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
-import { MessageSquareText, Search, Trash2, TrendingUp, X } from "lucide-react";
+import {
+  CheckCircle2,
+  MessageSquareText,
+  Search,
+  Trash2,
+  TrendingUp,
+  X,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/dashboard/content-blocks";
 import {
@@ -328,7 +336,9 @@ export function TeacherStudentHub({
   data: TeacherWorkflowData;
   classRecord: TeacherClassOption;
 }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
+  const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
   const students = useMemo(
     () =>
       data.students
@@ -344,9 +354,110 @@ export function TeacherStudentHub({
         }),
     [classRecord.id, data.students, query],
   );
+  const pendingRequests = data.joinRequests.filter(
+    (request) =>
+      request.classId === classRecord.id && request.status === "pending",
+  );
+
+  async function reviewRequest(
+    requestId: string,
+    decision: "approved" | "rejected",
+  ) {
+    setBusyRequestId(requestId);
+    try {
+      const response = await fetch(
+        `/api/teacher/classes/${classRecord.id}/join-requests/${requestId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ decision }),
+        },
+      );
+      const result = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
+
+      if (!response.ok || result?.ok === false) {
+        throw new Error(result?.error ?? "Unable to review request.");
+      }
+
+      toast.success(
+        decision === "approved" ? "Student added." : "Request declined.",
+      );
+      router.refresh();
+    } catch (error) {
+      toast.error("Request action failed", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setBusyRequestId(null);
+    }
+  }
 
   return (
     <div className="space-y-4">
+      {pendingRequests.length > 0 ? (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="space-y-3 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold">Join requests</p>
+                <p className="text-sm text-muted-foreground">
+                  Approve students before they enter this classroom.
+                </p>
+              </div>
+              <Badge variant="warning">{pendingRequests.length} pending</Badge>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {pendingRequests.map((request) => (
+                <div
+                  key={request.id}
+                  className="rounded-3xl border border-border bg-card/80 p-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                      {initials(request.studentName)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">
+                        {request.studentName}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {request.studentUsername
+                          ? `@${request.studentUsername}`
+                          : request.studentEmail}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busyRequestId === request.id}
+                      onClick={() => reviewRequest(request.id, "approved")}
+                    >
+                      <CheckCircle2 />
+                      Approve
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busyRequestId === request.id}
+                      onClick={() => reviewRequest(request.id, "rejected")}
+                    >
+                      <XCircle />
+                      Decline
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardContent className="flex flex-col gap-3 p-3 md:flex-row md:items-center">
           <div className="relative flex-1">
