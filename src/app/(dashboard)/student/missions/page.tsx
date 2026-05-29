@@ -5,9 +5,9 @@ export default function StudentMissionsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Smart missions"
-        title="Your next best learning moves."
-        description="EduPulse turns real assignments, materials, feedback, and deadlines into a clear daily path."
+        eyebrow="Daily Focus"
+        title="Know exactly what to do next."
+        description="Smart Learning Missions turn your real classwork into a simple checklist: finish urgent work, review feedback, open new teacher files, and keep momentum."
       />
       <StudentMissionsPanel />
     </div>

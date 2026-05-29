@@ -12,6 +12,7 @@ import {
   Menu,
   Search,
   Sparkles,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandLogo } from "@/components/brand/brand-logo";
@@ -225,6 +226,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const unreadCount = notifications.filter((item) => !item.readAt).length;
+  const currentRole = user?.role ?? "student";
+  const mobilePriority = useMemo(() => {
+    const byTitle = new Map(nav.map((item) => [item.title, item]));
+    const preferred =
+      currentRole === "student"
+        ? ["Dashboard", "Classes", "Upcoming", "Assignments"]
+        : currentRole === "teacher"
+          ? ["Dashboard", "Classes", "Requests", "Assignments"]
+          : ["Dashboard", "Users", "ID Maker", "Contact"];
+
+    return preferred
+      .map((title) => byTitle.get(title))
+      .filter(Boolean)
+      .slice(0, 4) as typeof nav;
+  }, [currentRole, nav]);
 
   if (loading || !user) {
     return (
@@ -247,9 +263,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
       <div className="premium-grid pointer-events-none fixed inset-x-0 top-0 h-[360px]" />
+      {openMobile ? (
+        <button
+          aria-label="Close menu"
+          className="fixed inset-0 z-40 bg-black/45 backdrop-blur-sm lg:hidden"
+          type="button"
+          onClick={() => setOpenMobile(false)}
+        />
+      ) : null}
+
       <aside
         className={cn(
-          "fixed bottom-4 left-4 top-4 z-40 hidden w-72 rounded-[2rem] border border-border/70 bg-card/80 p-4 shadow-[var(--shadow-glass)] backdrop-blur-2xl transition-transform lg:block lg:translate-x-0",
+          "fixed bottom-4 left-4 top-4 z-50 w-[min(20rem,calc(100vw-2rem))] rounded-[2rem] border border-border/70 bg-card/92 p-4 shadow-[var(--shadow-glass)] backdrop-blur-2xl transition-transform duration-300 lg:z-40 lg:block lg:w-72 lg:translate-x-0",
           openMobile ? "translate-x-0" : "-translate-x-[110%]",
         )}
       >
@@ -276,7 +301,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="lg:hidden"
             onClick={() => setOpenMobile(false)}
           >
-            <Menu />
+            <X />
           </Button>
         </div>
 
@@ -534,8 +559,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
 
-      <nav className="glass-panel fixed bottom-4 left-1/2 z-50 flex w-[min(calc(100%-2rem),440px)] -translate-x-1/2 items-center justify-between rounded-full px-2 py-2 lg:hidden">
-        {nav.slice(0, 5).map((item) => {
+      <nav className="glass-panel fixed bottom-4 left-1/2 z-40 flex w-[min(calc(100%-1rem),460px)] -translate-x-1/2 items-center justify-between rounded-full px-2 py-2 lg:hidden">
+        {mobilePriority.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
@@ -557,6 +582,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           );
         })}
+        <button
+          type="button"
+          aria-label="Open full menu"
+          onClick={() => setOpenMobile(true)}
+          className={cn(
+            "grid size-12 place-items-center rounded-full text-muted-foreground motion-safe hover:bg-muted hover:text-foreground",
+            openMobile && "bg-primary text-primary-foreground",
+          )}
+        >
+          <Menu className="size-5" />
+        </button>
       </nav>
     </div>
   );

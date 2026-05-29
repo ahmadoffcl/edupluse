@@ -87,6 +87,7 @@
 
 * {
   border-color: var(--border);
+  min-width: 0;
 }
 
 html {
@@ -102,6 +103,22 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  max-width: 100%;
 }
 
 .dark body {

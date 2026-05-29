@@ -44,11 +44,11 @@ const iconMap = {
 };
 
 const laneDescriptions: Record<LearningMissionLane, string> = {
-  due_soon: "Deadlines that need a clear finish.",
-  needs_attention: "Past deadlines and blockers.",
-  new_from_teacher: "Fresh resources from your classes.",
-  feedback: "Returned work to review.",
-  practice: "Small moves that keep progress alive.",
+  due_soon: "Work with a real deadline coming up.",
+  needs_attention: "Missing or risky work that can hurt progress.",
+  new_from_teacher: "New files, notes, or posts from your teachers.",
+  feedback: "Returned work you should read before moving on.",
+  practice: "Small actions that keep your learning streak healthy.",
 };
 
 const laneOrder: LearningMissionLane[] = [
@@ -247,16 +247,18 @@ function MissionCard({
           <Icon className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <Badge variant={priorityVariant(mission.priority)}>
-              {mission.priority}
+              {mission.priority === "urgent" ? "Do first" : mission.priority}
             </Badge>
             <Badge variant="secondary">{mission.sourceLabel}</Badge>
-            <Badge variant={statusVariant(mission.status)}>
-              {mission.status}
-            </Badge>
+            {!compact ? (
+              <Badge variant={statusVariant(mission.status)}>
+                {mission.status}
+              </Badge>
+            ) : null}
           </div>
-          <h3 className="mt-2 text-sm font-semibold sm:text-base">
+          <h3 className="mt-2 text-sm font-semibold leading-5 sm:text-base">
             {mission.title}
           </h3>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -282,10 +284,11 @@ function MissionCard({
           ) : null}
         </div>
       </div>
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+      <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap sm:justify-end">
         <Button
           type="button"
           size="sm"
+          className="w-full sm:w-auto"
           disabled={busy}
           onClick={() => onAction(mission, "start", true)}
         >
@@ -296,6 +299,7 @@ function MissionCard({
           type="button"
           size="sm"
           variant="outline"
+          className="w-full sm:w-auto"
           disabled={busy}
           onClick={() => onAction(mission, "open_source", true)}
         >
@@ -309,6 +313,7 @@ function MissionCard({
               type="button"
               size="sm"
               variant="outline"
+              className="w-full sm:w-auto"
               disabled={busy}
               onClick={() => onAction(mission, "complete")}
             >
@@ -319,6 +324,7 @@ function MissionCard({
               type="button"
               size="sm"
               variant="outline"
+              className="w-full sm:w-auto"
               disabled={busy}
               onClick={() => onAction(mission, "snooze")}
             >
@@ -329,6 +335,7 @@ function MissionCard({
               type="button"
               size="sm"
               variant="ghost"
+              className="w-full sm:w-auto"
               disabled={busy}
               onClick={() => onAction(mission, "dismiss")}
             >
@@ -341,6 +348,7 @@ function MissionCard({
             type="button"
             size="sm"
             variant="outline"
+            className="w-full sm:w-auto"
             disabled={busy}
             onClick={() => onAction(mission, "reopen")}
           >
@@ -394,8 +402,8 @@ function FocusHero({
   }
 
   return (
-    <Card className="overflow-hidden border-primary/20 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.18),transparent_34%),hsl(var(--card)/0.9)] shadow-[0_24px_90px_-55px_hsl(var(--primary)/0.75)]">
-      <CardContent className="p-4 sm:p-6">
+    <Card className="overflow-hidden border-primary/20 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.16),transparent_34%),hsl(var(--card)/0.92)] shadow-[0_24px_90px_-55px_hsl(var(--primary)/0.75)]">
+      <CardContent className={compact ? "p-4" : "p-4 sm:p-6"}>
         <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -407,20 +415,24 @@ function FocusHero({
                 <Badge variant="danger">{progress.urgent} urgent</Badge>
               ) : null}
             </div>
-            <h2 className="mt-4 text-2xl font-semibold tracking-tight sm:text-4xl">
+            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              Best next action
+            </p>
+            <h2 className="mt-2 text-xl font-semibold leading-tight tracking-tight sm:text-4xl">
               {mission.title}
             </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
               {mission.reason}
             </p>
-            <div className="mt-4 rounded-3xl border border-border/70 bg-background/68 p-4">
+            <div className="mt-4 rounded-3xl border border-border/70 bg-background/68 p-3 sm:p-4">
               <p className="text-sm font-semibold">Why this is here</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {mission.evidence}
               </p>
             </div>
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap">
               <Button
+                className="w-full sm:w-auto"
                 disabled={Boolean(busyKey)}
                 onClick={() => onAction(mission, "start", true)}
               >
@@ -429,6 +441,7 @@ function FocusHero({
               </Button>
               <Button
                 variant="outline"
+                className="w-full sm:w-auto"
                 disabled={Boolean(busyKey)}
                 onClick={() => onAction(mission, "complete")}
               >
@@ -438,7 +451,12 @@ function FocusHero({
               {!compact ? <MissionCoach mission={mission} /> : null}
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+          <div
+            className={cn(
+              "grid gap-3 sm:grid-cols-3 lg:grid-cols-1",
+              compact && "hidden sm:grid",
+            )}
+          >
             {[
               ["Open", progress.open],
               ["Done", progress.completed],
@@ -608,6 +626,23 @@ export function StudentMissionsPanel({
   if (compact) {
     return (
       <div className="space-y-3">
+        <Card className="border-blue-400/20 bg-blue-500/8">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-blue-500/12 text-blue-500">
+                <Target className="size-5" />
+              </span>
+              <div>
+                <p className="font-semibold">Smart Learning Missions</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  This is your automatic study checklist. It looks at real
+                  assignments, teacher files, feedback, and deadlines, then
+                  shows what to do next.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
         <FocusHero
           mission={activeData.focusMission}
           progress={activeData.progress}
@@ -636,6 +671,21 @@ export function StudentMissionsPanel({
   return (
     <div className="space-y-5">
       <div className="sticky top-20 z-20 rounded-[1.7rem] bg-background/72 pb-3 backdrop-blur-xl">
+        <Card className="mb-3 border-blue-400/20 bg-blue-500/8">
+          <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div>
+              <p className="text-sm font-semibold text-blue-500">
+                What is Smart Learning?
+              </p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                It is not random tasks. EduPulse watches your real classwork,
+                due dates, uploaded materials, and returned feedback, then turns
+                them into one clear daily focus list.
+              </p>
+            </div>
+            <Badge variant="info">Real class data only</Badge>
+          </CardContent>
+        </Card>
         <FocusHero
           mission={activeData.focusMission}
           progress={activeData.progress}

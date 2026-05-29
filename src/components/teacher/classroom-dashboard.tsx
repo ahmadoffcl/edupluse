@@ -1110,10 +1110,10 @@ export function TeacherClassroomDetail({
             key={label}
             type="button"
             onClick={() => setTab(targetTab)}
-            className="rounded-2xl border border-border bg-card/78 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-muted"
+            className="min-w-0 rounded-2xl border border-border bg-card/78 p-2.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-muted sm:p-3"
           >
             <Icon className="mb-2 size-4 text-primary" />
-            <p className="text-xl font-semibold">{value}</p>
+            <p className="text-lg font-semibold sm:text-xl">{value}</p>
             <p className="text-xs text-muted-foreground">{label}</p>
           </button>
         ))}
@@ -1121,7 +1121,7 @@ export function TeacherClassroomDetail({
 
       <ClassInterventionPanel data={data} classRecord={classRecord} />
 
-      <div className="glass-panel sticky top-3 z-20 flex gap-2 overflow-x-auto rounded-full p-1 lg:top-24">
+      <div className="glass-panel sticky top-3 z-20 flex gap-1 overflow-x-auto rounded-full p-1 lg:top-24">
         {tabs.map(({ value, label, icon: Icon }) => (
           <button
             key={value}
@@ -1129,7 +1129,7 @@ export function TeacherClassroomDetail({
             data-teacher-tab={value}
             onClick={() => setTab(value)}
             className={cn(
-              "inline-flex min-w-fit items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition",
+              "inline-flex min-w-fit items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold transition sm:gap-2 sm:px-4 sm:text-sm",
               tab === value
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",

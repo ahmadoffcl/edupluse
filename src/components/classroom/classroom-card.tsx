@@ -71,7 +71,7 @@ export function ClassroomCard({
   const meta = [section, term].filter(Boolean).join(" - ") || roleLabel;
   const body = (
     <>
-      <div className="relative h-40 overflow-hidden bg-[#070a12]">
+      <div className="relative h-32 overflow-hidden bg-[#070a12] sm:h-40">
         {bannerUrl ? (
           <div
             className="absolute inset-0 bg-cover bg-center transition duration-700 group-hover:scale-105"
@@ -93,7 +93,7 @@ export function ClassroomCard({
           ) : null}
         </div>
         <div className="absolute bottom-4 left-4 right-4 text-white">
-          <h3 className="line-clamp-2 text-xl font-semibold tracking-tight">
+          <h3 className="line-clamp-2 text-lg font-semibold tracking-tight sm:text-xl">
             {name}
           </h3>
           <p className="mt-1 line-clamp-1 text-xs text-white/70">
@@ -102,7 +102,7 @@ export function ClassroomCard({
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col justify-between gap-4 p-4">
+      <div className="flex flex-1 flex-col justify-between gap-3 p-3 sm:gap-4 sm:p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/12 text-xs font-bold text-primary">
@@ -124,16 +124,18 @@ export function ClassroomCard({
           ) : null}
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
           {stats.slice(0, 3).map((stat) => {
             const Icon = stat.icon ? iconMap[stat.icon] : ClipboardList;
             return (
               <div
                 key={stat.label}
-                className="rounded-2xl border border-border bg-background/58 p-3"
+                className="min-w-0 rounded-2xl border border-border bg-background/58 p-2 sm:p-3"
               >
                 <Icon className="mb-2 size-4 text-primary" />
-                <p className="text-base font-semibold">{stat.value}</p>
+                <p className="text-sm font-semibold sm:text-base">
+                  {stat.value}
+                </p>
                 <p className="truncate text-[11px] text-muted-foreground">
                   {stat.label}
                 </p>
@@ -158,12 +160,12 @@ export function ClassroomCard({
       {href ? (
         <Link
           href={href}
-          className="group flex h-full min-h-[310px] flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-card/86 shadow-[0_24px_70px_-45px_rgba(0,0,0,0.85)] ring-1 ring-border/70 backdrop-blur-xl transition sm:rounded-[2rem]"
+          className="group flex h-full min-h-[270px] flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-card/86 shadow-[0_24px_70px_-45px_rgba(0,0,0,0.85)] ring-1 ring-border/70 backdrop-blur-xl transition sm:min-h-[310px] sm:rounded-[2rem]"
         >
           {body}
         </Link>
       ) : (
-        <div className="group flex h-full min-h-[310px] flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-card/86 shadow-[0_24px_70px_-45px_rgba(0,0,0,0.85)] ring-1 ring-border/70 backdrop-blur-xl transition sm:rounded-[2rem]">
+        <div className="group flex h-full min-h-[270px] flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-card/86 shadow-[0_24px_70px_-45px_rgba(0,0,0,0.85)] ring-1 ring-border/70 backdrop-blur-xl transition sm:min-h-[310px] sm:rounded-[2rem]">
           {body}
         </div>
       )}
