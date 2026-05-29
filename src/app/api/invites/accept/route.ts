@@ -161,8 +161,6 @@ export async function POST(request: Request) {
     orgId: invite.org_id,
     orgName: organization?.name ?? "EduPulse",
     deviceSessionId: body.deviceSessionId,
-    photoURL:
-      typeof profile.avatar_url === "string" ? profile.avatar_url : null,
     onboardingCompleted: Boolean(profile.onboarding_completed_at),
   });
 

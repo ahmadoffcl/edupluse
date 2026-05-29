@@ -593,7 +593,6 @@ export async function POST(request: Request) {
       orgId: membership.orgId,
       orgName: membership.orgName,
       deviceSessionId: body.deviceSessionId,
-      photoURL: membership.avatarUrl,
       onboardingCompleted: membership.onboardingCompleted,
     });
 

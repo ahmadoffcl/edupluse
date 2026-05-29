@@ -196,7 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(data?.error ?? "Unable to create secure app session.");
       }
 
-      return (await response.json()) as {
+      const session = (await response.json()) as {
         role: Role;
         orgId: string;
         orgName: string;
@@ -204,6 +204,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         onboardingCompleted: boolean;
         setupPending?: boolean;
       };
+      const verification = await fetch("/api/auth/session", {
+        cache: "no-store",
+      });
+
+      if (!verification.ok) {
+        throw new Error(
+          "Your browser blocked the secure app session. Please sign in again.",
+        );
+      }
+
+      return session;
     },
     [],
   );

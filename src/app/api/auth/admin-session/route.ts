@@ -129,7 +129,6 @@ export async function POST(request: Request) {
       orgId: "11111111-1111-4111-8111-111111111111",
       orgName: "EduPulse Academy Network",
       deviceSessionId: body.deviceSessionId,
-      photoURL: null,
       onboardingCompleted: true,
     });
 
