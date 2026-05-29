@@ -47,11 +47,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   >("unsupported");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const notificationsLoadedRef = useRef(false);
+  const routePendingTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setRoutePending(false), 80);
+    if (routePendingTimerRef.current) {
+      window.clearTimeout(routePendingTimerRef.current);
+      routePendingTimerRef.current = null;
+    }
     return () => window.clearTimeout(timer);
   }, [pathname]);
+
+  useEffect(
+    () => () => {
+      if (routePendingTimerRef.current) {
+        window.clearTimeout(routePendingTimerRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (loading) return;
@@ -198,6 +212,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   function navigateTo(href: string) {
     if (href !== pathname) {
       setRoutePending(true);
+      if (routePendingTimerRef.current) {
+        window.clearTimeout(routePendingTimerRef.current);
+      }
+      routePendingTimerRef.current = window.setTimeout(() => {
+        setRoutePending(false);
+        routePendingTimerRef.current = null;
+      }, 8_000);
       router.push(href);
     }
     setOpenMobile(false);

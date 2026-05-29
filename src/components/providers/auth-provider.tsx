@@ -146,11 +146,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     ) => {
       const fallbackUser = userFromDemoRole(role ?? "student");
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 9_000);
       const response = await fetch("/api/auth/session", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        signal: controller.signal,
         body: JSON.stringify({
           idToken,
           role,
@@ -161,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           allowSelfSignup: details?.allowSelfSignup ?? false,
           deviceSessionId: createDeviceSessionId(),
         }),
-      });
+      }).finally(() => window.clearTimeout(timeout));
 
       if (!response.ok) {
         const data = (await response.json().catch(() => null)) as {

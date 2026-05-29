@@ -9,15 +9,13 @@ import { StudentClassesPanel } from "@/components/student/student-classes-panel"
 import { StudentMissionsPanel } from "@/components/student/student-missions-panel";
 import { StudentPerformancePanel } from "@/components/student/student-performance-panel";
 import { UpcomingTasksPanel } from "@/components/student/upcoming-tasks-panel";
-import { getStudentDailyFocus } from "@/lib/dashboard/learning-missions";
 import { getDashboardData } from "@/lib/dashboard/server-data";
 import { getStudentPerformanceData } from "@/lib/dashboard/student-performance";
 
 export default async function StudentDashboardPage() {
-  const [data, performanceData, focus] = await Promise.all([
+  const [data, performanceData] = await Promise.all([
     getDashboardData(),
     getStudentPerformanceData(),
-    getStudentDailyFocus(),
   ]);
   const visibleMetrics = data.metrics
     .filter((metric) => metric.label !== "Attendance")
@@ -35,7 +33,7 @@ export default async function StudentDashboardPage() {
         <main className="space-y-4 sm:space-y-5">
           <StudentClassesPanel classes={data.classes} compact />
           <UpcomingTasksPanel tasks={data.upcomingTasks} compact />
-          <StudentMissionsPanel data={focus} compact />
+          <StudentMissionsPanel compact />
           <StudentPerformancePanel data={performanceData} />
         </main>
         <aside className="space-y-4 sm:space-y-5 xl:sticky xl:top-24 xl:self-start">

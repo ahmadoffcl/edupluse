@@ -1,6 +1,12 @@
 "use client";
 
-import { type FormEvent, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
@@ -65,6 +71,10 @@ function authErrorMessage(error: unknown) {
 
   if (message.includes("Firebase Admin credentials")) {
     return "Your identity was verified, but workspace access is not ready yet.";
+  }
+
+  if (message.includes("aborted") || message.includes("timed out")) {
+    return "The workspace took too long to respond. Please try again.";
   }
 
   if (message.includes("Workspace access is not configured")) {
@@ -156,6 +166,7 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const redirectTimerRef = useRef<number | null>(null);
   const {
     configured,
     loading,
@@ -170,52 +181,72 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
   const activeMode: AuthPanelMode = isReset ? "reset" : authMode;
   const copy = authCopy[activeMode];
 
+  const goToWorkspace = useCallback(
+    (target: string) => {
+      if (redirectTimerRef.current) {
+        window.clearTimeout(redirectTimerRef.current);
+      }
+
+      router.replace(target);
+      redirectTimerRef.current = window.setTimeout(() => {
+        if (window.location.pathname !== target) {
+          window.location.assign(target);
+        }
+      }, 450);
+    },
+    [router],
+  );
+
+  const targetForSession = useCallback(
+    (result: AuthSessionResult) => {
+      const localOnboardingCompleted = hasCompletedOnboarding(result.role, [
+        result.uid,
+        result.email,
+        email,
+      ]);
+      const onboardingCompleted =
+        result.onboardingCompleted || localOnboardingCompleted;
+
+      if (onboardingCompleted) return homeForRole(result.role);
+      if (result.role === "student") return "/onboarding/student";
+      if (result.role === "teacher") return "/onboarding/teacher";
+      return homeForRole(result.role);
+    },
+    [email],
+  );
+
+  useEffect(
+    () => () => {
+      if (redirectTimerRef.current) {
+        window.clearTimeout(redirectTimerRef.current);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (loading || !user || isReset) return;
+    if (!user || isReset) return;
 
     if (user.onboardingCompleted) {
-      router.replace(homeForRole(user.role));
+      goToWorkspace(homeForRole(user.role));
       return;
     }
 
     if (user.role === "student") {
-      router.replace("/onboarding/student");
+      goToWorkspace("/onboarding/student");
       return;
     }
 
     if (user.role === "teacher") {
-      router.replace("/onboarding/teacher");
+      goToWorkspace("/onboarding/teacher");
       return;
     }
 
-    router.replace(homeForRole(user.role));
-  }, [isReset, loading, router, user]);
+    goToWorkspace(homeForRole(user.role));
+  }, [goToWorkspace, isReset, user]);
 
   async function finish(result: AuthSessionResult) {
-    const localOnboardingCompleted = hasCompletedOnboarding(result.role, [
-      result.uid,
-      result.email,
-      email,
-    ]);
-    const onboardingCompleted =
-      result.onboardingCompleted || localOnboardingCompleted;
-
-    if (onboardingCompleted) {
-      router.push(homeForRole(result.role));
-      return;
-    }
-
-    if (result.role === "student") {
-      router.push("/onboarding/student");
-      return;
-    }
-
-    if (result.role === "teacher") {
-      router.push("/onboarding/teacher");
-      return;
-    }
-
-    router.push(homeForRole(result.role));
+    goToWorkspace(targetForSession(result));
   }
 
   function switchMode() {

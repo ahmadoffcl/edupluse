@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import { motion } from "framer-motion";
@@ -14,6 +14,7 @@ import {
   Flame,
   Loader2,
   MessageSquareText,
+  RefreshCw,
   Sparkles,
   Target,
   X,
@@ -176,6 +177,38 @@ function MissionCoach({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+function MissionLoadingShell({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="space-y-3">
+      <div className="overflow-hidden rounded-[1.6rem] border border-border/70 bg-card/72 p-4 shadow-[var(--shadow-glass)] sm:p-5">
+        <div className="animate-pulse space-y-4">
+          <div className="h-5 w-32 rounded-full bg-muted" />
+          <div className="h-8 w-full max-w-lg rounded-full bg-muted" />
+          <div className="h-4 w-full max-w-xl rounded-full bg-muted" />
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="h-16 rounded-2xl bg-muted" />
+            <div className="h-16 rounded-2xl bg-muted" />
+            <div className="h-16 rounded-2xl bg-muted" />
+          </div>
+        </div>
+      </div>
+      {!compact ? (
+        <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
+          <div className="space-y-3">
+            {[0, 1, 2].map((item) => (
+              <div
+                key={item}
+                className="h-32 animate-pulse rounded-[1.35rem] border border-border/70 bg-card/72"
+              />
+            ))}
+          </div>
+          <div className="hidden h-72 animate-pulse rounded-[1.35rem] border border-border/70 bg-card/72 xl:block" />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -430,18 +463,69 @@ export function StudentMissionsPanel({
   data,
   compact = false,
 }: {
-  data: LearningMissionFocusData;
+  data?: LearningMissionFocusData | null;
   compact?: boolean;
 }) {
   const router = useRouter();
+  const [focusData, setFocusData] = useState<LearningMissionFocusData | null>(
+    data ?? null,
+  );
+  const [loading, setLoading] = useState(!data);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const activeData = focusData ?? data ?? null;
+
+  const loadMissions = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
+    setLoadError("");
+    try {
+      const response = await fetch("/api/student/missions", {
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        data?: LearningMissionFocusData;
+        error?: string;
+      } | null;
+
+      if (!response.ok || payload?.ok === false || !payload?.data) {
+        throw new Error(payload?.error ?? "Unable to load missions.");
+      }
+
+      setFocusData(payload.data);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to load missions.";
+      setLoadError(message);
+      if (!quiet) {
+        toast.error("Missions unavailable", { description: message });
+      }
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (data) {
+      setFocusData(data);
+      setLoading(false);
+      return;
+    }
+
+    void loadMissions();
+  }, [data, loadMissions]);
+
   const secondaryMissions = useMemo(
     () =>
-      data.visibleMissions
-        .filter((mission) => mission.sourceKey !== data.focusMission?.sourceKey)
+      (activeData?.visibleMissions ?? [])
+        .filter(
+          (mission) =>
+            mission.sourceKey !== activeData?.focusMission?.sourceKey,
+        )
         .filter((mission) => mission.status === "open")
         .slice(0, compact ? 2 : 8),
-    [compact, data.focusMission?.sourceKey, data.visibleMissions],
+    [activeData?.focusMission?.sourceKey, activeData?.visibleMissions, compact],
   );
 
   async function updateMission(
@@ -449,6 +533,16 @@ export function StudentMissionsPanel({
     action: LearningMissionAction,
     navigate = false,
   ) {
+    if (navigate) {
+      router.push(mission.sourceHref || mission.actionHref);
+      void fetch("/api/student/missions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceKey: mission.sourceKey, action }),
+      }).catch(() => undefined);
+      return;
+    }
+
     setBusyKey(`${mission.sourceKey}:${action}`);
     try {
       const response = await fetch("/api/student/missions", {
@@ -458,6 +552,7 @@ export function StudentMissionsPanel({
       });
       const payload = (await response.json().catch(() => null)) as {
         ok?: boolean;
+        data?: LearningMissionFocusData;
         error?: string;
       } | null;
 
@@ -469,11 +564,8 @@ export function StudentMissionsPanel({
       if (action === "snooze") toast.success("Mission snoozed for later.");
       if (action === "dismiss") toast.success("Mission dismissed.");
 
-      if (navigate) {
-        router.push(mission.sourceHref || mission.actionHref);
-      } else {
-        router.refresh();
-      }
+      if (payload?.data) setFocusData(payload.data);
+      else await loadMissions(true);
     } catch (error) {
       toast.error("Mission update failed", {
         description: error instanceof Error ? error.message : "Try again.",
@@ -483,12 +575,42 @@ export function StudentMissionsPanel({
     }
   }
 
+  async function refreshMissions() {
+    setRefreshing(true);
+    try {
+      await loadMissions(true);
+      toast.success("Daily focus updated.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  if (loading && !activeData) {
+    return <MissionLoadingShell compact={compact} />;
+  }
+
+  if (!activeData) {
+    return (
+      <Card className="border-amber-400/20 bg-amber-500/8">
+        <CardContent className="p-5">
+          <Badge variant="warning">Missions paused</Badge>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {loadError || "Your daily focus could not load right now."}
+          </p>
+          <Button className="mt-4" onClick={() => void loadMissions()}>
+            <RefreshCw /> Try again
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (compact) {
     return (
       <div className="space-y-3">
         <FocusHero
-          mission={data.focusMission}
-          progress={data.progress}
+          mission={activeData.focusMission}
+          progress={activeData.progress}
           busyKey={busyKey}
           compact
           onAction={updateMission}
@@ -513,24 +635,37 @@ export function StudentMissionsPanel({
 
   return (
     <div className="space-y-5">
-      <FocusHero
-        mission={data.focusMission}
-        progress={data.progress}
-        busyKey={busyKey}
-        compact={false}
-        onAction={updateMission}
-      />
+      <div className="sticky top-20 z-20 rounded-[1.7rem] bg-background/72 pb-3 backdrop-blur-xl">
+        <FocusHero
+          mission={activeData.focusMission}
+          progress={activeData.progress}
+          busyKey={busyKey}
+          compact={false}
+          onAction={updateMission}
+        />
+        <div className="mt-3 flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={refreshing}
+            onClick={() => void refreshMissions()}
+          >
+            {refreshing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+            Refresh focus
+          </Button>
+        </div>
+      </div>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
         <main className="space-y-5">
-          {data.visibleMissions.length === 0 ? (
+          {activeData.visibleMissions.length === 0 ? (
             <EmptyState
               variant="activity"
               message="No missions right now. You are clear."
             />
           ) : (
             laneOrder.map((lane) => {
-              const missions = data.groupedMissions[lane];
+              const missions = activeData.groupedMissions[lane];
               if (missions.length === 0) return null;
               return (
                 <section key={lane} className="space-y-3">
@@ -571,13 +706,13 @@ export function StudentMissionsPanel({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {data.timeline.length === 0 ? (
+              {activeData.timeline.length === 0 ? (
                 <div className="rounded-2xl bg-muted p-3 text-sm text-muted-foreground">
                   New activity will appear here when teachers post work, return
                   feedback, or you act on missions.
                 </div>
               ) : (
-                data.timeline.map((item) => (
+                activeData.timeline.map((item) => (
                   <div
                     key={item.id}
                     className="rounded-2xl border border-border bg-background/70 p-3"
@@ -604,10 +739,10 @@ export function StudentMissionsPanel({
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-2">
               {[
-                ["Open", data.progress.open],
-                ["Completed", data.progress.completed],
-                ["Urgent", data.progress.urgent],
-                ["Total", data.progress.total],
+                ["Open", activeData.progress.open],
+                ["Completed", activeData.progress.completed],
+                ["Urgent", activeData.progress.urgent],
+                ["Total", activeData.progress.total],
               ].map(([label, value]) => (
                 <div
                   key={label}
