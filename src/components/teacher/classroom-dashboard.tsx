@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  AlertTriangle,
   ArrowLeft,
   BookOpen,
   Check,
   ChevronRight,
   ClipboardList,
+  FileSearch,
   FileText,
   ImageIcon,
   Link2,
@@ -17,6 +19,7 @@ import {
   Plus,
   Search,
   Send,
+  Sparkles,
   UsersRound,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -82,6 +85,96 @@ function nextTeacherDeadline(data: TeacherWorkflowData, classId: string) {
       (a, b) =>
         new Date(a.dueAt ?? 0).getTime() - new Date(b.dueAt ?? 0).getTime(),
     )[0]?.dueAt;
+}
+
+function ClassInterventionPanel({
+  data,
+  classRecord,
+}: {
+  data: TeacherWorkflowData;
+  classRecord: TeacherClassOption;
+}) {
+  const studentsById = new Map(
+    data.students.map((student) => [student.id, student]),
+  );
+  const signals = data.missionSignals
+    .filter(
+      (signal) =>
+        signal.classId === classRecord.id &&
+        (signal.openCount > 0 ||
+          signal.urgentCount > 0 ||
+          signal.missedCount > 0),
+    )
+    .sort(
+      (a, b) =>
+        b.urgentCount - a.urgentCount ||
+        b.missedCount - a.missedCount ||
+        b.openCount - a.openCount,
+    )
+    .slice(0, 4);
+
+  if (signals.length === 0) return null;
+
+  return (
+    <Card className="border-amber-400/20 bg-amber-500/8">
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="flex items-center gap-2 font-semibold">
+              <Sparkles className="size-4 text-primary" />
+              Students needing help today
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Real Smart Mission blockers from this class.
+            </p>
+          </div>
+          <Badge variant="warning">{signals.length} signal(s)</Badge>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          {signals.map((signal) => {
+            const student = studentsById.get(signal.profileId);
+            return (
+              <button
+                key={`${signal.profileId}-${signal.classId ?? "all"}`}
+                type="button"
+                onClick={() => {
+                  document
+                    .querySelector<HTMLButtonElement>(
+                      `[data-teacher-tab="people"]`,
+                    )
+                    ?.click();
+                }}
+                className="rounded-2xl border border-border bg-card/80 p-3 text-left transition hover:-translate-y-0.5 hover:bg-muted"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {student?.username
+                        ? `@${student.username}`
+                        : (student?.name ?? "Student")}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {signal.suggestedFollowUp}
+                    </p>
+                  </div>
+                  <AlertTriangle className="size-4 text-amber-500" />
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant="warning">{signal.openCount} open</Badge>
+                  {signal.urgentCount ? (
+                    <Badge variant="danger">{signal.urgentCount} urgent</Badge>
+                  ) : null}
+                  {signal.missedCount ? (
+                    <Badge variant="danger">{signal.missedCount} missed</Badge>
+                  ) : null}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function displayStudent(
@@ -1026,11 +1119,14 @@ export function TeacherClassroomDetail({
         ))}
       </div>
 
+      <ClassInterventionPanel data={data} classRecord={classRecord} />
+
       <div className="glass-panel sticky top-3 z-20 flex gap-2 overflow-x-auto rounded-full p-1 lg:top-24">
         {tabs.map(({ value, label, icon: Icon }) => (
           <button
             key={value}
             type="button"
+            data-teacher-tab={value}
             onClick={() => setTab(value)}
             className={cn(
               "inline-flex min-w-fit items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition",
@@ -1161,53 +1257,87 @@ export function TeacherClassroomDetail({
                       message="No assignments posted in this class yet."
                     />
                   ) : (
-                    assignments.map((assignment) => (
-                      <div
-                        key={assignment.id}
-                        className="rounded-3xl border border-border bg-background/60 p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold">{assignment.title}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {assignment.submittedCount}/
-                              {assignment.totalStudents} submitted
-                            </p>
-                            {assignment.dueAt ? (
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                Due {formatDate(assignment.dueAt)}
+                    assignments.map((assignment) => {
+                      const assignmentSubmissions = data.submissions.filter(
+                        (submission) =>
+                          submission.assignmentId === assignment.id,
+                      );
+                      return (
+                        <div
+                          key={assignment.id}
+                          className="rounded-3xl border border-border bg-background/60 p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold">
+                                {assignment.title}
                               </p>
-                            ) : null}
+                              <p className="text-sm text-muted-foreground">
+                                {assignment.submittedCount}/
+                                {assignment.totalStudents} submitted
+                              </p>
+                              {assignment.dueAt ? (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Due {formatDate(assignment.dueAt)}
+                                </p>
+                              ) : null}
+                            </div>
+                            <Badge>{assignment.status}</Badge>
                           </div>
-                          <Badge>{assignment.status}</Badge>
+                          {assignment.attachments.length > 0 ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {assignment.attachments.map((attachment) => {
+                                const file = {
+                                  name: attachment.name,
+                                  mimeType: attachment.mimeType,
+                                  signedUrl: attachment.signedUrl,
+                                  downloadName: attachment.name,
+                                  source: "assignment" as const,
+                                };
+                                return (
+                                  <div
+                                    key={attachment.path}
+                                    className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card/80 p-2"
+                                  >
+                                    <span className="text-sm font-medium">
+                                      {attachment.name}
+                                    </span>
+                                    <FilePreviewButton file={file} />
+                                    <FileDownloadButton file={file} />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                          {assignmentSubmissions.length > 0 ? (
+                            <div className="mt-3 rounded-2xl border border-border bg-card/70 p-3">
+                              <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                Checks reports
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {assignmentSubmissions
+                                  .slice(0, 4)
+                                  .map((submission) => (
+                                    <Button
+                                      key={submission.id}
+                                      asChild
+                                      size="sm"
+                                      variant="outline"
+                                    >
+                                      <Link
+                                        href={`/teacher/assignments/${assignment.id}/checks/${submission.id}`}
+                                      >
+                                        <FileSearch />
+                                        {submission.studentName}
+                                      </Link>
+                                    </Button>
+                                  ))}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
-                        {assignment.attachments.length > 0 ? (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {assignment.attachments.map((attachment) => {
-                              const file = {
-                                name: attachment.name,
-                                mimeType: attachment.mimeType,
-                                signedUrl: attachment.signedUrl,
-                                downloadName: attachment.name,
-                                source: "assignment" as const,
-                              };
-                              return (
-                                <div
-                                  key={attachment.path}
-                                  className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card/80 p-2"
-                                >
-                                  <span className="text-sm font-medium">
-                                    {attachment.name}
-                                  </span>
-                                  <FilePreviewButton file={file} />
-                                  <FileDownloadButton file={file} />
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </CardContent>
               </Card>

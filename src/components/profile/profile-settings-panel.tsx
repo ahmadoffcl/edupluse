@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
+import { useAuth } from "@/components/providers/auth-provider";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 import type { ProfileSettingsData } from "@/lib/dashboard/profile-settings";
 import { initials } from "@/lib/utils";
@@ -38,6 +39,7 @@ export function ProfileSettingsPanel({
   });
   const [busy, setBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const { updateUserProfile } = useAuth();
 
   function update<K extends keyof typeof form>(
     key: K,
@@ -66,6 +68,17 @@ export function ProfileSettingsPanel({
       }
 
       toast.success("Profile settings saved");
+      updateUserProfile({
+        displayName: form.displayName,
+        photoURL: form.avatarUrl || null,
+      });
+      const auth = getFirebaseAuth();
+      if (auth?.currentUser) {
+        void updateProfile(auth.currentUser, {
+          displayName: form.displayName,
+          photoURL: form.avatarUrl || null,
+        }).catch(() => undefined);
+      }
     } catch (error) {
       toast.error("Settings could not be saved", {
         description: error instanceof Error ? error.message : "Try again.",
@@ -98,9 +111,12 @@ export function ProfileSettingsPanel({
       }
 
       update("avatarUrl", payload.avatarUrl);
+      updateUserProfile({ photoURL: payload.avatarUrl });
       const auth = getFirebaseAuth();
       if (auth?.currentUser) {
-        await updateProfile(auth.currentUser, { photoURL: payload.avatarUrl });
+        void updateProfile(auth.currentUser, {
+          photoURL: payload.avatarUrl,
+        }).catch(() => undefined);
       }
       toast.success("Profile image updated");
     } catch (error) {

@@ -1,0 +1,626 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import * as Dialog from "@radix-ui/react-dialog";
+import { motion } from "framer-motion";
+import {
+  AlertTriangle,
+  ArrowRight,
+  BookOpenCheck,
+  BrainCircuit,
+  CheckCircle2,
+  Clock3,
+  Flame,
+  Loader2,
+  MessageSquareText,
+  Sparkles,
+  Target,
+  X,
+  XCircle,
+  Zap,
+} from "lucide-react";
+import { toast } from "sonner";
+import { EmptyState } from "@/components/dashboard/content-blocks";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type {
+  LearningMission,
+  LearningMissionAction,
+  LearningMissionFocusData,
+  LearningMissionLane,
+} from "@/lib/dashboard/learning-missions";
+import { cn, formatDateTime } from "@/lib/utils";
+
+const iconMap = {
+  assignment_due: Clock3,
+  missing_submission: AlertTriangle,
+  new_resource: BookOpenCheck,
+  teacher_feedback: MessageSquareText,
+  study_streak: Flame,
+  weak_topic: Target,
+};
+
+const laneDescriptions: Record<LearningMissionLane, string> = {
+  due_soon: "Deadlines that need a clear finish.",
+  needs_attention: "Past deadlines and blockers.",
+  new_from_teacher: "Fresh resources from your classes.",
+  feedback: "Returned work to review.",
+  practice: "Small moves that keep progress alive.",
+};
+
+const laneOrder: LearningMissionLane[] = [
+  "needs_attention",
+  "due_soon",
+  "new_from_teacher",
+  "feedback",
+  "practice",
+];
+
+const laneLabel: Record<LearningMissionLane, string> = {
+  due_soon: "Due Soon",
+  needs_attention: "Needs Attention",
+  new_from_teacher: "New From Teacher",
+  feedback: "Feedback",
+  practice: "Practice",
+};
+
+function priorityVariant(priority: LearningMission["priority"]) {
+  if (priority === "urgent") return "danger";
+  if (priority === "high") return "warning";
+  if (priority === "normal") return "info";
+  return "secondary";
+}
+
+function statusVariant(status: LearningMission["status"]) {
+  if (status === "completed") return "success";
+  if (status === "dismissed") return "secondary";
+  return "warning";
+}
+
+function sourceTone(mission: LearningMission) {
+  if (mission.priority === "urgent") return "border-red-400/25 bg-red-500/8";
+  if (mission.priority === "high") return "border-amber-400/25 bg-amber-500/8";
+  return "border-border bg-background/62";
+}
+
+function MissionCoach({
+  mission,
+  compact = false,
+}: {
+  mission: LearningMission;
+  compact?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [answer, setAnswer] = useState(mission.aiExplanation ?? "");
+  const [busy, setBusy] = useState(false);
+
+  async function explain() {
+    setOpen(true);
+    if (answer || busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/student/missions/explain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceKey: mission.sourceKey }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        text?: string;
+        error?: string;
+      } | null;
+
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error ?? "Unable to explain mission.");
+      }
+
+      setAnswer(payload?.text ?? "");
+    } catch (error) {
+      toast.error("Coach could not open", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Button
+        type="button"
+        size={compact ? "sm" : "default"}
+        variant="outline"
+        onClick={explain}
+      >
+        <BrainCircuit />
+        Coach
+      </Button>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[80] bg-black/65 backdrop-blur-sm" />
+        <Dialog.Content className="fixed bottom-0 left-0 right-0 z-[90] max-h-[82vh] overflow-auto rounded-t-[2rem] border border-border bg-card p-5 shadow-2xl outline-none sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-[min(92vw,620px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[2rem]">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Dialog.Title className="flex items-center gap-2 text-lg font-semibold">
+                <BrainCircuit className="size-5 text-primary" />
+                Smart study steps
+              </Dialog.Title>
+              <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+                Based only on this real mission and its classroom context.
+              </Dialog.Description>
+            </div>
+            <Dialog.Close asChild>
+              <Button type="button" size="icon" variant="ghost">
+                <X />
+              </Button>
+            </Dialog.Close>
+          </div>
+          <div className="mt-5 rounded-3xl border border-border bg-background/70 p-4">
+            <p className="text-sm font-semibold">{mission.title}</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {mission.reason}
+            </p>
+          </div>
+          <div className="mt-4 min-h-40 whitespace-pre-wrap rounded-3xl border border-border bg-muted/50 p-4 text-sm leading-6">
+            {busy ? (
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Building your plan...
+              </span>
+            ) : (
+              answer
+            )}
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function MissionCard({
+  mission,
+  index,
+  compact = false,
+  busyKey,
+  onAction,
+}: {
+  mission: LearningMission;
+  index: number;
+  compact?: boolean;
+  busyKey: string | null;
+  onAction: (
+    mission: LearningMission,
+    action: LearningMissionAction,
+    navigate?: boolean,
+  ) => Promise<void>;
+}) {
+  const Icon = iconMap[mission.kind];
+  const busy = busyKey?.startsWith(`${mission.sourceKey}:`) ?? false;
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, delay: index * 0.025 }}
+      className={cn(
+        "rounded-[1.35rem] border p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl sm:p-4",
+        sourceTone(mission),
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary sm:size-11">
+          <Icon className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={priorityVariant(mission.priority)}>
+              {mission.priority}
+            </Badge>
+            <Badge variant="secondary">{mission.sourceLabel}</Badge>
+            <Badge variant={statusVariant(mission.status)}>
+              {mission.status}
+            </Badge>
+          </div>
+          <h3 className="mt-2 text-sm font-semibold sm:text-base">
+            {mission.title}
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {compact ? mission.reason : mission.description}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {mission.className ? (
+              <span className="rounded-full bg-muted px-3 py-1 font-medium">
+                {mission.className}
+              </span>
+            ) : null}
+            {mission.timeLabel ? (
+              <span className="rounded-full bg-muted px-3 py-1 font-medium">
+                {mission.timeLabel}
+              </span>
+            ) : null}
+          </div>
+          {!compact ? (
+            <div className="mt-3 rounded-2xl bg-card/72 p-3 text-sm">
+              <p className="font-medium">{mission.reason}</p>
+              <p className="mt-1 text-muted-foreground">{mission.evidence}</p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+        <Button
+          type="button"
+          size="sm"
+          disabled={busy}
+          onClick={() => onAction(mission, "start", true)}
+        >
+          <Zap />
+          Start
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => onAction(mission, "open_source", true)}
+        >
+          <ArrowRight />
+          Open source
+        </Button>
+        {!compact ? <MissionCoach mission={mission} compact /> : null}
+        {mission.status === "open" ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => onAction(mission, "complete")}
+            >
+              <CheckCircle2 />
+              Done
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => onAction(mission, "snooze")}
+            >
+              <Clock3 />
+              Snooze
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => onAction(mission, "dismiss")}
+            >
+              <XCircle />
+              Dismiss
+            </Button>
+          </>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => onAction(mission, "reopen")}
+          >
+            Reopen
+          </Button>
+        )}
+      </div>
+    </motion.article>
+  );
+}
+
+function FocusHero({
+  mission,
+  progress,
+  busyKey,
+  compact,
+  onAction,
+}: {
+  mission: LearningMission | null;
+  progress: LearningMissionFocusData["progress"];
+  busyKey: string | null;
+  compact: boolean;
+  onAction: (
+    mission: LearningMission,
+    action: LearningMissionAction,
+    navigate?: boolean,
+  ) => Promise<void>;
+}) {
+  if (!mission) {
+    return (
+      <Card className="overflow-hidden border-emerald-400/20 bg-emerald-500/8">
+        <CardContent className="p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <Badge variant="success">Clear</Badge>
+              <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
+                No missions right now. You are clear.
+              </h2>
+              <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+                New classwork, feedback, and teacher materials will appear here
+                as soon as they exist.
+              </p>
+            </div>
+            <span className="grid size-16 place-items-center rounded-[1.5rem] bg-emerald-400/12 text-emerald-500">
+              <CheckCircle2 className="size-8" />
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="overflow-hidden border-primary/20 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.18),transparent_34%),hsl(var(--card)/0.9)] shadow-[0_24px_90px_-55px_hsl(var(--primary)/0.75)]">
+      <CardContent className="p-4 sm:p-6">
+        <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge>Daily Focus</Badge>
+              <Badge variant={priorityVariant(mission.priority)}>
+                {mission.timeLabel ?? mission.priority}
+              </Badge>
+              {progress.urgent > 0 ? (
+                <Badge variant="danger">{progress.urgent} urgent</Badge>
+              ) : null}
+            </div>
+            <h2 className="mt-4 text-2xl font-semibold tracking-tight sm:text-4xl">
+              {mission.title}
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+              {mission.reason}
+            </p>
+            <div className="mt-4 rounded-3xl border border-border/70 bg-background/68 p-4">
+              <p className="text-sm font-semibold">Why this is here</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {mission.evidence}
+              </p>
+            </div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Button
+                disabled={Boolean(busyKey)}
+                onClick={() => onAction(mission, "start", true)}
+              >
+                <Zap />
+                Start focus
+              </Button>
+              <Button
+                variant="outline"
+                disabled={Boolean(busyKey)}
+                onClick={() => onAction(mission, "complete")}
+              >
+                <CheckCircle2 />
+                Mark done
+              </Button>
+              {!compact ? <MissionCoach mission={mission} /> : null}
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            {[
+              ["Open", progress.open],
+              ["Done", progress.completed],
+              ["Snoozed", progress.snoozed],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-3xl border border-border/70 bg-card/70 p-4"
+              >
+                <p className="text-2xl font-semibold">{value}</p>
+                <p className="text-xs text-muted-foreground">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function StudentMissionsPanel({
+  data,
+  compact = false,
+}: {
+  data: LearningMissionFocusData;
+  compact?: boolean;
+}) {
+  const router = useRouter();
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const secondaryMissions = useMemo(
+    () =>
+      data.visibleMissions
+        .filter((mission) => mission.sourceKey !== data.focusMission?.sourceKey)
+        .filter((mission) => mission.status === "open")
+        .slice(0, compact ? 2 : 8),
+    [compact, data.focusMission?.sourceKey, data.visibleMissions],
+  );
+
+  async function updateMission(
+    mission: LearningMission,
+    action: LearningMissionAction,
+    navigate = false,
+  ) {
+    setBusyKey(`${mission.sourceKey}:${action}`);
+    try {
+      const response = await fetch("/api/student/missions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceKey: mission.sourceKey, action }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
+
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error ?? "Unable to update mission.");
+      }
+
+      if (action === "complete") toast.success("Mission completed.");
+      if (action === "snooze") toast.success("Mission snoozed for later.");
+      if (action === "dismiss") toast.success("Mission dismissed.");
+
+      if (navigate) {
+        router.push(mission.sourceHref || mission.actionHref);
+      } else {
+        router.refresh();
+      }
+    } catch (error) {
+      toast.error("Mission update failed", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        <FocusHero
+          mission={data.focusMission}
+          progress={data.progress}
+          busyKey={busyKey}
+          compact
+          onAction={updateMission}
+        />
+        {secondaryMissions.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {secondaryMissions.map((mission, index) => (
+              <MissionCard
+                key={mission.sourceKey}
+                mission={mission}
+                index={index}
+                compact
+                busyKey={busyKey}
+                onAction={updateMission}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <FocusHero
+        mission={data.focusMission}
+        progress={data.progress}
+        busyKey={busyKey}
+        compact={false}
+        onAction={updateMission}
+      />
+
+      <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
+        <main className="space-y-5">
+          {data.visibleMissions.length === 0 ? (
+            <EmptyState
+              variant="activity"
+              message="No missions right now. You are clear."
+            />
+          ) : (
+            laneOrder.map((lane) => {
+              const missions = data.groupedMissions[lane];
+              if (missions.length === 0) return null;
+              return (
+                <section key={lane} className="space-y-3">
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-semibold">
+                        {laneLabel[lane]}
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        {laneDescriptions[lane]}
+                      </p>
+                    </div>
+                    <Badge variant="secondary">{missions.length}</Badge>
+                  </div>
+                  <div className="grid gap-3">
+                    {missions.map((mission, index) => (
+                      <MissionCard
+                        key={mission.sourceKey}
+                        mission={mission}
+                        index={index}
+                        busyKey={busyKey}
+                        onAction={updateMission}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })
+          )}
+        </main>
+
+        <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="size-4 text-primary" />
+                What changed?
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {data.timeline.length === 0 ? (
+                <div className="rounded-2xl bg-muted p-3 text-sm text-muted-foreground">
+                  New activity will appear here when teachers post work, return
+                  feedback, or you act on missions.
+                </div>
+              ) : (
+                data.timeline.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border border-border bg-background/70 p-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold">{item.title}</p>
+                      <Badge variant="secondary">{item.kind}</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {item.body}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {formatDateTime(item.createdAt)}
+                    </p>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Today’s progress</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-2">
+              {[
+                ["Open", data.progress.open],
+                ["Completed", data.progress.completed],
+                ["Urgent", data.progress.urgent],
+                ["Total", data.progress.total],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="rounded-2xl border border-border bg-background/70 p-3"
+                >
+                  <p className="text-xl font-semibold">{value}</p>
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
+    </div>
+  );
+}

@@ -122,6 +122,14 @@ export async function POST(request: Request) {
   const dueAt = assignment.due_at ? new Date(assignment.due_at) : null;
   const status = dueAt && dueAt.getTime() < Date.now() ? "late" : "submitted";
   const submittedAt = new Date().toISOString();
+  const fileMetadata =
+    file instanceof File && file.size > 0
+      ? {
+          file_size: file.size,
+          mime_type: file.type,
+          original_filename: safeStorageName(file.name),
+        }
+      : {};
   const { data, error } = await context.supabase
     .from("submissions")
     .upsert(
@@ -132,6 +140,7 @@ export async function POST(request: Request) {
         status,
         content,
         file_path: filePath ?? existing?.file_path ?? null,
+        ...fileMetadata,
         submitted_at: submittedAt,
       },
       { onConflict: "assignment_id,student_id" },

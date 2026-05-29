@@ -11,6 +11,7 @@ import {
   MessageSquareText,
   Settings,
   ShieldCheck,
+  Sparkles,
   UploadCloud,
   UsersRound,
   UserPlus,
@@ -69,6 +70,7 @@ export const roleNav: Record<Role, NavItem[]> = {
       href: "/student/analytics",
       icon: ChartNoAxesCombined,
     },
+    { title: "Missions", href: "/student/missions", icon: Sparkles },
     { title: "Classes", href: "/student/classes", icon: GraduationCap },
     { title: "Upcoming", href: "/student/upcoming", icon: CalendarClock },
     {

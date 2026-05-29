@@ -1,6 +1,10 @@
 import "server-only";
 import { getCurrentAppSession } from "@/lib/auth/server";
 import { isMissingClassJoinRequestTable } from "@/lib/server/class-join-requests";
+import {
+  isMissingLearningMissionEventsTable,
+  isMissingLearningMissionsTable,
+} from "@/lib/dashboard/learning-missions";
 import { isTeacherRole } from "@/lib/server/workflow-auth";
 import {
   engagementHeavyPerformance,
@@ -137,6 +141,20 @@ export type StudentPerformanceRow = {
   band: "high_momentum" | "steady" | "watch" | "at_risk";
 };
 
+export type TeacherMissionSignalRow = {
+  profileId: string;
+  classId: string | null;
+  openCount: number;
+  completedCount: number;
+  dismissedCount: number;
+  urgentCount: number;
+  missedCount: number;
+  latestTitle: string | null;
+  lastActionAt: string | null;
+  lastActionLabel: string | null;
+  suggestedFollowUp: string;
+};
+
 export type TeacherResourceRow = {
   id: string;
   title: string;
@@ -239,6 +257,7 @@ export type TeacherWorkflowData = {
   students: TeacherStudentOption[];
   submissions: TeacherSubmissionRow[];
   performance: StudentPerformanceRow[];
+  missionSignals: TeacherMissionSignalRow[];
   resources: TeacherResourceRow[];
   assignmentRows: TeacherAssignmentRow[];
   attendanceHistory: TeacherAttendanceRow[];
@@ -273,6 +292,7 @@ function emptyData(): TeacherWorkflowData {
     students: [],
     submissions: [],
     performance: [],
+    missionSignals: [],
     resources: [],
     assignmentRows: [],
     attendanceHistory: [],
@@ -504,6 +524,8 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
     announcementsResult,
     messagesResult,
     joinRequestsResult,
+    missionSignalsResult,
+    missionEventsResult,
   ] = await Promise.all([
     db
       .from("subjects")
@@ -522,7 +544,7 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
     db
       .from("submissions")
       .select(
-        "id,assignment_id,student_id,status,score,feedback,submitted_at,graded_at,file_path,content,assignments(id,title,class_id,points),profiles(display_name,username,email)",
+        "id,assignment_id,student_id,status,score,feedback,submitted_at,graded_at,file_path,content,file_size,mime_type,original_filename,assignments(id,title,class_id,points),profiles(display_name,username,email)",
       )
       .eq("org_id", currentSession.orgId)
       .order("submitted_at", { ascending: false })
@@ -569,6 +591,19 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
       .eq("org_id", currentSession.orgId)
       .order("requested_at", { ascending: false })
       .limit(300),
+    db
+      .from("learning_missions")
+      .select(
+        "id,profile_id,class_id,source_key,kind,status,priority,title,completed_at,updated_at,last_seen_at",
+      )
+      .eq("org_id", currentSession.orgId)
+      .limit(1000),
+    db
+      .from("learning_mission_events")
+      .select("id,profile_id,class_id,event_type,title,created_at,metadata")
+      .eq("org_id", currentSession.orgId)
+      .order("created_at", { ascending: false })
+      .limit(1000),
   ]);
 
   const subjects = ((subjectsResult.data ?? []) as DbRecord[])
@@ -666,6 +701,20 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
           filterByVisibleClass(row),
         ) as DbRecord[])
       : [];
+  const missionRowsRaw =
+    !missionSignalsResult.error ||
+    isMissingLearningMissionsTable(missionSignalsResult.error)
+      ? (((missionSignalsResult.data ?? []) as DbRecord[]).filter(
+          (row) => filterByVisibleClass(row) || !stringValue(row.class_id),
+        ) as DbRecord[])
+      : [];
+  const missionEventRowsRaw =
+    !missionEventsResult.error ||
+    isMissingLearningMissionEventsTable(missionEventsResult.error)
+      ? (((missionEventsResult.data ?? []) as DbRecord[]).filter(
+          (row) => filterByVisibleClass(row) || !stringValue(row.class_id),
+        ) as DbRecord[])
+      : [];
 
   const signedUrls = await Promise.all(
     resourceRowsRaw.map(async (row) => {
@@ -754,6 +803,12 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
       };
     },
   );
+  const assignmentSubmissionRowsById = new Map(
+    assignmentRowsRaw.map((row) => [
+      stringValue(row.id),
+      asRows(row.submissions),
+    ]),
+  );
 
   const attendanceHistory: TeacherAttendanceRow[] = attendanceRowsRaw.map(
     (row) => {
@@ -793,8 +848,11 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
         content: stringValue(row.content) || null,
         filePath,
         signedUrl: filePath ? (submissionSignedUrls[index] ?? null) : null,
-        mimeType: null,
-        originalFilename: filePath?.split("/").pop() ?? null,
+        mimeType: stringValue(row.mime_type) || null,
+        originalFilename:
+          stringValue(row.original_filename) ||
+          filePath?.split("/").pop() ||
+          null,
       };
     },
   );
@@ -864,6 +922,175 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
       lateCount,
       performanceScore,
       band: performanceBand(performanceScore),
+    };
+  });
+
+  const missionSignalMap = new Map<string, TeacherMissionSignalRow>();
+  const persistedMissionStatus = new Map<string, string>();
+  function updateMissionSignal({
+    profileId,
+    classId,
+    status,
+    priority,
+    title,
+    missed,
+  }: {
+    profileId: string;
+    classId: string | null;
+    status: string;
+    priority: string;
+    title: string | null;
+    missed?: boolean;
+  }) {
+    if (!profileId) return;
+
+    const key = `${profileId}:${classId ?? "all"}`;
+    const current =
+      missionSignalMap.get(key) ??
+      (prefixMissionSignal(
+        profileId,
+        classId,
+      ) satisfies TeacherMissionSignalRow);
+
+    if (status === "open") current.openCount += 1;
+    if (status === "completed") current.completedCount += 1;
+    if (status === "dismissed") current.dismissedCount += 1;
+    if (priority === "urgent") current.urgentCount += 1;
+    if (missed) current.missedCount += 1;
+    if (!current.latestTitle && title) current.latestTitle = title;
+    missionSignalMap.set(key, current);
+  }
+
+  function prefixMissionSignal(
+    profileId: string,
+    classId: string | null,
+  ): TeacherMissionSignalRow {
+    return {
+      profileId,
+      classId,
+      openCount: 0,
+      completedCount: 0,
+      dismissedCount: 0,
+      urgentCount: 0,
+      missedCount: 0,
+      latestTitle: null,
+      lastActionAt: null,
+      lastActionLabel: null,
+      suggestedFollowUp: "No mission risk is visible yet.",
+    };
+  }
+
+  for (const row of missionRowsRaw) {
+    const profileId = stringValue(row.profile_id);
+    const classId = stringValue(row.class_id) || null;
+    if (!profileId) continue;
+    const sourceKey = stringValue(row.source_key);
+    if (sourceKey) {
+      persistedMissionStatus.set(
+        `${profileId}:${sourceKey}`,
+        stringValue(row.status, "open"),
+      );
+    }
+
+    updateMissionSignal({
+      profileId,
+      classId,
+      status: stringValue(row.status, "open"),
+      priority: stringValue(row.priority, "normal"),
+      title: stringValue(row.title) || null,
+      missed:
+        stringValue(row.kind) === "missing_submission" ||
+        stringValue(row.source_key).startsWith("assignment-missing:"),
+    });
+  }
+
+  for (const row of missionEventRowsRaw) {
+    const profileId = stringValue(row.profile_id);
+    const classId = stringValue(row.class_id) || null;
+    if (!profileId) continue;
+    const key = `${profileId}:${classId ?? "all"}`;
+    const current =
+      missionSignalMap.get(key) ??
+      (prefixMissionSignal(
+        profileId,
+        classId,
+      ) satisfies TeacherMissionSignalRow);
+    const createdAt = stringValue(row.created_at);
+    if (
+      createdAt &&
+      (!current.lastActionAt ||
+        new Date(createdAt).getTime() >
+          new Date(current.lastActionAt).getTime())
+    ) {
+      current.lastActionAt = createdAt;
+      current.lastActionLabel =
+        stringValue(row.title) ||
+        stringValue(row.event_type, "Mission activity").replace("_", " ");
+    }
+    missionSignalMap.set(key, current);
+  }
+
+  const now = Date.now();
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  for (const student of students) {
+    const classAssignments = assignmentRows.filter(
+      (assignment) =>
+        assignment.status !== "draft" &&
+        student.classIds.includes(assignment.classId),
+    );
+
+    for (const assignment of classAssignments) {
+      const submitted = (
+        assignmentSubmissionRowsById.get(assignment.id) ?? []
+      ).some((submission) => stringValue(submission.student_id) === student.id);
+      if (submitted || !assignment.dueAt) continue;
+
+      const dueTime = new Date(assignment.dueAt).getTime();
+      if (!Number.isFinite(dueTime)) continue;
+
+      const isMissing = dueTime < now;
+      const isUpcoming = dueTime >= now && dueTime <= now + sevenDays;
+      if (!isMissing && !isUpcoming) continue;
+
+      const sourceKey = isMissing
+        ? `assignment-missing:${assignment.id}`
+        : `assignment-due:${assignment.id}`;
+      const persistedStatus = persistedMissionStatus.get(
+        `${student.id}:${sourceKey}`,
+      );
+      if (persistedStatus) continue;
+
+      updateMissionSignal({
+        profileId: student.id,
+        classId: assignment.classId,
+        status: "open",
+        priority: isMissing ? "urgent" : "high",
+        missed: isMissing,
+        title: isMissing
+          ? `Missing: ${assignment.title}`
+          : `Upcoming: ${assignment.title}`,
+      });
+    }
+  }
+
+  const missionSignals = Array.from(missionSignalMap.values()).map((signal) => {
+    const performanceRow = performance.find(
+      (row) => row.profileId === signal.profileId,
+    );
+    return {
+      ...signal,
+      suggestedFollowUp:
+        signal.urgentCount > 0
+          ? "Follow up on urgent mission blockers."
+          : signal.missedCount > 0
+            ? "Ask about missed work and agree on the next small step."
+            : signal.openCount >= 3
+              ? "Check why missions are staying open."
+              : (performanceRow?.missingCount ?? 0) > 0
+                ? "Ask about missing work before the next deadline."
+                : signal.completedCount > 0
+                  ? "Student is responding to missions."
+                  : "No mission risk is visible yet.",
     };
   });
 
@@ -1086,6 +1313,7 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
     performance: performance.sort(
       (a, b) => a.performanceScore - b.performanceScore,
     ),
+    missionSignals,
     resources,
     assignmentRows,
     attendanceHistory,

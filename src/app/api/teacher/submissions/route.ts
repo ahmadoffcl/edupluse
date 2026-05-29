@@ -52,7 +52,7 @@ export async function GET() {
   let query = context.supabase
     .from("submissions")
     .select(
-      "id,status,score,feedback,submitted_at,graded_at,file_path,content,assignments(id,title,class_id,points,classes(name,section)),profiles(id,display_name,username,email)",
+      "id,status,score,feedback,submitted_at,graded_at,file_path,content,file_size,mime_type,original_filename,assignments(id,title,class_id,points,classes(name,section)),profiles(id,display_name,username,email)",
     )
     .eq("org_id", context.session.orgId)
     .order("submitted_at", { ascending: false })
@@ -82,6 +82,9 @@ export async function GET() {
       submittedAt: stringValue(row.submitted_at),
       gradedAt: stringValue(row.graded_at) || null,
       filePath: stringValue(row.file_path) || null,
+      fileSize: typeof row.file_size === "number" ? row.file_size : null,
+      mimeType: stringValue(row.mime_type) || null,
+      originalFilename: stringValue(row.original_filename) || null,
       content: stringValue(row.content) || null,
       assignment: {
         id: stringValue(assignment?.id),

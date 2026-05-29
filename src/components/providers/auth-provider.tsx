@@ -54,6 +54,10 @@ type AuthContextValue = {
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   setRole: (role: Role) => Promise<void>;
+  updateUserProfile: (updates: {
+    displayName?: string;
+    photoURL?: string | null;
+  }) => void;
   token: () => Promise<string | null>;
 };
 
@@ -170,6 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: Role;
         orgId: string;
         orgName: string;
+        photoURL?: string | null;
         onboardingCompleted: boolean;
         setupPending?: boolean;
       };
@@ -295,7 +300,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName,
-            photoURL: firebaseUser.photoURL,
+            photoURL: session.photoURL ?? firebaseUser.photoURL,
             emailVerified: firebaseUser.emailVerified,
             role: session.role,
             orgId: session.orgId,
@@ -469,7 +474,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           credential.user.displayName ??
           credential.user.email?.split("@")[0] ??
           "EduPulse user",
-        photoURL: credential.user.photoURL,
+        photoURL: session.photoURL ?? credential.user.photoURL,
         emailVerified: credential.user.emailVerified,
         role: session.role,
         orgId: session.orgId,
@@ -516,7 +521,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         uid: credential.user.uid,
         email: credential.user.email,
         displayName,
-        photoURL: credential.user.photoURL,
+        photoURL: session.photoURL ?? credential.user.photoURL,
         emailVerified: credential.user.emailVerified,
         role: session.role,
         orgId: session.orgId,
@@ -571,7 +576,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         credential.user.displayName ??
         credential.user.email?.split("@")[0] ??
         "EduPulse user",
-      photoURL: credential.user.photoURL,
+      photoURL: session.photoURL ?? credential.user.photoURL,
       emailVerified: credential.user.emailVerified,
       role: session.role,
       orgId: session.orgId,
@@ -599,6 +604,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await sendPasswordResetEmail(auth, email);
     toast.success("Password reset email sent");
   }, []);
+
+  const updateUserProfile = useCallback(
+    (updates: { displayName?: string; photoURL?: string | null }) => {
+      setUser((current) => (current ? { ...current, ...updates } : current));
+    },
+    [],
+  );
 
   const logout = useCallback(async () => {
     window.localStorage.removeItem(storageKey);
@@ -631,6 +643,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resetPassword,
       logout,
       setRole,
+      updateUserProfile,
       token,
     }),
     [
@@ -644,6 +657,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setRole,
       signUpWithEmail,
       token,
+      updateUserProfile,
       user,
     ],
   );

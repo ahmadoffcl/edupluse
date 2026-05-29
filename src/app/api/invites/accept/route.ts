@@ -87,7 +87,7 @@ export async function POST(request: Request) {
       },
       { onConflict: "firebase_uid" },
     )
-    .select("id,onboarding_completed_at")
+    .select("id,onboarding_completed_at,avatar_url")
     .single();
 
   if (profileError) {
@@ -161,6 +161,9 @@ export async function POST(request: Request) {
     orgId: invite.org_id,
     orgName: organization?.name ?? "EduPulse",
     deviceSessionId: body.deviceSessionId,
+    photoURL:
+      typeof profile.avatar_url === "string" ? profile.avatar_url : null,
+    onboardingCompleted: Boolean(profile.onboarding_completed_at),
   });
 
   const response = NextResponse.json({
@@ -168,6 +171,8 @@ export async function POST(request: Request) {
     role,
     orgId: invite.org_id,
     orgName: organization?.name ?? "EduPulse",
+    photoURL:
+      typeof profile.avatar_url === "string" ? profile.avatar_url : null,
     onboardingCompleted: Boolean(profile.onboarding_completed_at),
   });
   response.cookies.set(sessionCookieName, token, sessionCookieOptions());

@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   MessageSquareText,
   Search,
+  Sparkles,
   Trash2,
   TrendingUp,
   X,
@@ -63,6 +64,48 @@ function StudentDrawer({
       submission.classId === classRecord.id &&
       submission.studentId === student.id,
   );
+  const missionSignals = data.missionSignals.filter(
+    (signal) =>
+      signal.profileId === student.id &&
+      (!signal.classId || signal.classId === classRecord.id),
+  );
+  const missionSignal =
+    missionSignals.length > 0
+      ? missionSignals.reduce(
+          (summary, signal) => ({
+            openCount: summary.openCount + signal.openCount,
+            completedCount: summary.completedCount + signal.completedCount,
+            dismissedCount: summary.dismissedCount + signal.dismissedCount,
+            urgentCount: summary.urgentCount + signal.urgentCount,
+            missedCount: summary.missedCount + signal.missedCount,
+            latestTitle: summary.latestTitle ?? signal.latestTitle,
+            lastActionAt:
+              !summary.lastActionAt ||
+              (signal.lastActionAt &&
+                new Date(signal.lastActionAt).getTime() >
+                  new Date(summary.lastActionAt).getTime())
+                ? signal.lastActionAt
+                : summary.lastActionAt,
+            lastActionLabel: signal.lastActionLabel ?? summary.lastActionLabel,
+            suggestedFollowUp:
+              signal.urgentCount > 0 ||
+              (!summary.urgentCount && signal.openCount > summary.openCount)
+                ? signal.suggestedFollowUp
+                : summary.suggestedFollowUp,
+          }),
+          {
+            openCount: 0,
+            completedCount: 0,
+            dismissedCount: 0,
+            urgentCount: 0,
+            missedCount: 0,
+            latestTitle: null as string | null,
+            lastActionAt: null as string | null,
+            lastActionLabel: null as string | null,
+            suggestedFollowUp: "No mission risk is visible yet.",
+          },
+        )
+      : null;
 
   async function removeStudent() {
     setBusy("remove");
@@ -207,6 +250,58 @@ function StudentDrawer({
                 </p>
               </div>
             ) : null}
+
+            <div className="rounded-3xl border border-primary/15 bg-primary/5 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-4 text-primary" />
+                  <p className="font-semibold">Smart missions</p>
+                </div>
+                <Badge
+                  variant={
+                    missionSignal?.urgentCount
+                      ? "danger"
+                      : missionSignal?.openCount
+                        ? "warning"
+                        : "success"
+                  }
+                >
+                  {missionSignal?.openCount ?? 0} open
+                </Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ["Done", missionSignal?.completedCount ?? 0],
+                  ["Urgent", missionSignal?.urgentCount ?? 0],
+                  ["Missed", missionSignal?.missedCount ?? 0],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="rounded-2xl border border-border/70 bg-card/70 p-3"
+                  >
+                    <p className="text-lg font-semibold">{value}</p>
+                    <p className="text-[11px] text-muted-foreground">{label}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground">
+                {missionSignal?.latestTitle
+                  ? `Latest: ${missionSignal.latestTitle}`
+                  : "No active mission activity for this class yet."}
+              </p>
+              {missionSignal?.lastActionLabel ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Last action: {missionSignal.lastActionLabel}
+                  {missionSignal.lastActionAt
+                    ? ` - ${formatDate(missionSignal.lastActionAt)}`
+                    : ""}
+                </p>
+              ) : null}
+              <p className="mt-2 rounded-2xl bg-background/72 p-3 text-sm font-medium">
+                {missionSignal?.suggestedFollowUp ??
+                  "No mission risk is visible yet."}
+              </p>
+            </div>
 
             <div className="rounded-3xl border border-border bg-background/60 p-4">
               <p className="mb-3 font-semibold">Assignment status</p>

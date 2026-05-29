@@ -28,11 +28,13 @@ type MembershipResolution = {
   orgId: string;
   orgName: string;
   profileId: string | null;
+  avatarUrl: string | null;
   onboardingCompleted: boolean;
   setupPending?: boolean;
 };
 type ProfileLookup = {
   id: string;
+  avatarUrl: string | null;
   onboardingCompleted: boolean;
 };
 type MembershipRow = {
@@ -87,7 +89,7 @@ async function selectProfileByUid(
 ): Promise<{ profile: ProfileLookup | null; error: unknown | null }> {
   const result = await supabase
     .from("profiles")
-    .select("id,onboarding_completed_at")
+    .select("id,onboarding_completed_at,avatar_url")
     .eq("firebase_uid", uid)
     .maybeSingle();
 
@@ -96,6 +98,10 @@ async function selectProfileByUid(
       profile: result.data
         ? {
             id: result.data.id as string,
+            avatarUrl:
+              typeof result.data.avatar_url === "string"
+                ? result.data.avatar_url
+                : null,
             onboardingCompleted: Boolean(result.data.onboarding_completed_at),
           }
         : null,
@@ -107,11 +113,19 @@ async function selectProfileByUid(
     return { profile: null, error: result.error };
   }
 
-  const fallback = await supabase
+  let fallback = await supabase
     .from("profiles")
-    .select("id")
+    .select("id,avatar_url")
     .eq("firebase_uid", uid)
     .maybeSingle();
+
+  if (fallback.error && isMissingProfileColumn(fallback.error, "avatar_url")) {
+    fallback = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("firebase_uid", uid)
+      .maybeSingle();
+  }
 
   if (fallback.error) {
     return { profile: null, error: fallback.error };
@@ -121,6 +135,11 @@ async function selectProfileByUid(
     profile: fallback.data
       ? {
           id: fallback.data.id as string,
+          avatarUrl:
+            "avatar_url" in fallback.data &&
+            typeof fallback.data.avatar_url === "string"
+              ? fallback.data.avatar_url
+              : null,
           onboardingCompleted: true,
         }
       : null,
@@ -163,6 +182,7 @@ function provisionalMembership(requestedRole?: Role): MembershipResolution {
     orgId: bootstrapOrg.id,
     orgName: bootstrapOrg.name,
     profileId: null,
+    avatarUrl: null,
     onboardingCompleted: false,
     setupPending: true,
   };
@@ -246,6 +266,7 @@ async function ensureStudentMembership({
     orgId: bootstrapOrg.id,
     orgName: bootstrapOrg.name,
     profileId,
+    avatarUrl: null,
     onboardingCompleted: false,
   };
 }
@@ -318,6 +339,7 @@ async function maybeBootstrapFirstUser({
     orgId: bootstrapOrg.id,
     orgName: bootstrapOrg.name,
     profileId,
+    avatarUrl: null,
     onboardingCompleted: true,
   };
 }
@@ -472,8 +494,29 @@ async function resolveMembership({
     orgId: membership.org_id as string,
     orgName: organization?.name ?? demoOrg.name,
     profileId: profile.id as string,
+    avatarUrl: profile.avatarUrl,
     onboardingCompleted: profile.onboardingCompleted,
   };
+}
+
+async function profileAvatarUrl(
+  supabase: SupabaseServiceClient | null,
+  uid: string,
+) {
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("avatar_url")
+    .eq("firebase_uid", uid)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingProfileColumn(error, "avatar_url")) return null;
+    throw error;
+  }
+
+  return typeof data?.avatar_url === "string" ? data.avatar_url : null;
 }
 
 async function recordDeviceSession({
@@ -550,6 +593,7 @@ export async function POST(request: Request) {
       orgId: membership.orgId,
       orgName: membership.orgName,
       deviceSessionId: body.deviceSessionId,
+      photoURL: membership.avatarUrl,
       onboardingCompleted: membership.onboardingCompleted,
     });
 
@@ -558,6 +602,7 @@ export async function POST(request: Request) {
       role: membership.role,
       orgId: membership.orgId,
       orgName: membership.orgName,
+      photoURL: membership.avatarUrl,
       onboardingCompleted: membership.onboardingCompleted,
       setupPending: Boolean(membership.setupPending),
     });
@@ -585,13 +630,18 @@ export async function GET() {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
+  const avatarUrl = await profileAvatarUrl(
+    getSupabaseServiceClient(),
+    session.uid,
+  ).catch(() => null);
+
   return NextResponse.json({
     ok: true,
     user: {
       uid: session.uid,
       email: session.email,
       displayName: session.displayName,
-      photoURL: null,
+      photoURL: avatarUrl ?? session.photoURL ?? null,
       emailVerified: true,
       role: session.role,
       orgId: session.orgId,

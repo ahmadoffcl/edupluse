@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Archive,
@@ -1270,6 +1271,16 @@ function GradeSubmissionForm({
               </div>
             ))}
           </div>
+        </div>
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+          <Button asChild size="sm" variant="outline">
+            <Link
+              href={`/teacher/assignments/${submission.assignmentId}/checks/${submission.id}`}
+            >
+              <BarChart3 />
+              View checks report
+            </Link>
+          </Button>
         </div>
       </div>
 

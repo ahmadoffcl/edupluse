@@ -21,6 +21,7 @@ export type AuthSessionResult = {
   role: Role;
   orgId: string;
   orgName: string;
+  photoURL?: string | null;
   onboardingCompleted: boolean;
   setupPending?: boolean;
 };

@@ -7,17 +7,20 @@ import { AnalyticsCockpit } from "@/components/dashboard/analytics-cockpit";
 import { MetricGrid } from "@/components/dashboard/metric-grid";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { RiskRadarPanel } from "@/components/dashboard/content-blocks";
+import { getMissionEngagementSummary } from "@/lib/dashboard/admin-mission-analytics";
 import { getDashboardData } from "@/lib/dashboard/server-data";
 
 export default async function AdminAnalyticsPage() {
-  const data = await getDashboardData();
+  const [data, missionSummary] = await Promise.all([
+    getDashboardData(),
+    getMissionEngagementSummary(),
+  ]);
   const activeUsers = data.metrics.find(
     (metric) => metric.label === "Active records",
   );
   const assignmentMetric = data.metrics.find(
     (metric) => metric.label === "Assignments",
   );
-  const xpMetric = data.metrics.find((metric) => metric.label === "XP events");
   const signalBars = data.metrics
     .map((metric) => ({
       name: metric.label.replace("Active records", "Users"),
@@ -59,9 +62,9 @@ export default async function AdminAnalyticsPage() {
             icon: "risk",
           },
           {
-            label: xpMetric?.label ?? "XP events",
-            value: xpMetric?.value ?? "0",
-            meta: xpMetric?.delta ?? "Learning activity",
+            label: "Mission engagement",
+            value: missionSummary.completed,
+            meta: `${missionSummary.activeStudents} active students`,
             tone: "success",
             icon: "activity",
           },
@@ -72,7 +75,39 @@ export default async function AdminAnalyticsPage() {
         <EngagementChart data={data.engagementChart} />
         <CompletionDonut data={data.assignmentStatusChart} />
       </div>
-      <MetricBarChart data={signalBars} />
+      <MetricBarChart
+        data={[
+          ...signalBars,
+          ...(missionSummary.total > 0
+            ? [
+                { name: "Missions", value: missionSummary.total },
+                { name: "Mission actions", value: missionSummary.events },
+                { name: "Urgent blockers", value: missionSummary.urgent },
+              ]
+            : []),
+        ]}
+      />
+      {missionSummary.total > 0 ? (
+        <RiskRadarPanel
+          items={[
+            {
+              label: "Open Smart Missions",
+              count: missionSummary.open,
+              severity: "medium",
+            },
+            {
+              label: "Urgent mission blockers",
+              count: missionSummary.urgent,
+              severity: missionSummary.urgent > 0 ? "high" : "medium",
+            },
+            {
+              label: "Classes with blockers",
+              count: missionSummary.classesWithBlockers,
+              severity: "medium",
+            },
+          ]}
+        />
+      ) : null}
       <RiskRadarPanel items={data.riskSignals} />
     </div>
   );
