@@ -209,6 +209,7 @@ export type TeacherCalendarEventRow = {
 export type TeacherClassJoinRequestRow = {
   id: string;
   classId: string;
+  className: string;
   studentId: string;
   studentName: string;
   studentUsername: string | null;
@@ -404,6 +405,9 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
     }),
   );
   const visibleClassIds = new Set(classes.map((item) => item.id));
+  const classById = new Map(
+    classes.map((classRecord) => [classRecord.id, classRecord]),
+  );
 
   const availableStudentsResult = await db
     .from("memberships")
@@ -953,6 +957,8 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
       return {
         id: stringValue(row.id),
         classId: stringValue(row.class_id),
+        className:
+          classById.get(stringValue(row.class_id))?.name ?? "Classroom",
         studentId,
         studentName: student?.name ?? "Student",
         studentUsername: student?.username ?? null,

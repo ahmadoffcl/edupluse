@@ -85,31 +85,45 @@ function authErrorMessage(error: unknown) {
 function AuthBackdrop() {
   return (
     <>
-      <Image
-        src="/auth-login-bg.jpg"
-        alt=""
-        fill
-        sizes="100vw"
-        className="absolute inset-0 -z-40 scale-105 object-cover blur-xl"
-        style={{ objectPosition: "center center" }}
+      <div aria-hidden="true" className="absolute inset-0 -z-30 bg-[#060914]" />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_20%_18%,rgba(34,211,238,0.2),transparent_30%),radial-gradient(circle_at_78%_42%,rgba(124,156,255,0.18),transparent_28%),radial-gradient(circle_at_92%_76%,rgba(168,85,247,0.18),transparent_34%)]"
       />
+    </>
+  );
+}
+
+function AuthVisual({ reducedMotion }: { reducedMotion: boolean }) {
+  return (
+    <motion.aside
+      className="relative min-h-[230px] overflow-hidden rounded-[2rem] border border-white/12 bg-black shadow-[0_30px_100px_-54px_rgba(34,211,238,0.7)] sm:min-h-[300px] lg:min-h-[560px]"
+      initial={reducedMotion ? false : { opacity: 0, x: -24, scale: 0.985 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      transition={{ duration: 0.55, ease: "easeOut" }}
+    >
       <Image
-        src="/auth-login-bg.jpg"
+        src="/edupulse-hero.jpg"
         alt=""
         fill
         priority
-        sizes="100vw"
-        className="absolute inset-0 -z-30 object-cover object-[26%_center] sm:object-contain sm:object-left"
+        sizes="(min-width: 1024px) 680px, 100vw"
+        className="object-cover object-[66%_center]"
       />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 -z-20 bg-[linear-gradient(90deg,rgba(3,7,22,0.04)_0%,rgba(3,7,22,0.08)_42%,rgba(3,7,22,0.68)_67%,rgba(3,7,22,0.96)_100%)]"
-      />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_78%_42%,rgba(80,227,255,0.22),transparent_30%),radial-gradient(circle_at_92%_76%,rgba(168,85,247,0.2),transparent_34%),linear-gradient(180deg,rgba(6,10,26,0.02),rgba(6,10,26,0.28))]"
-      />
-    </>
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,0,0,0.88),rgba(0,0,0,0.42)_46%,rgba(0,0,0,0.08))]" />
+      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black to-transparent" />
+      <div className="relative z-10 flex h-full min-h-[230px] flex-col justify-end p-5 text-white sm:min-h-[300px] sm:p-7 lg:min-h-[560px] lg:p-9">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-200">
+          EduPulse access
+        </p>
+        <h2 className="max-w-sm text-3xl font-semibold leading-none tracking-tight sm:text-4xl lg:text-5xl">
+          Your class, one tap away.
+        </h2>
+        <p className="mt-4 max-w-md text-sm leading-6 text-white/72 sm:text-base">
+          Learn, submit, message, and keep moving without noise.
+        </p>
+      </div>
+    </motion.aside>
   );
 }
 
@@ -249,9 +263,9 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
         <PublicNavbar />
         <main className="relative isolate min-h-dvh overflow-hidden px-4 pb-8 pt-28 text-white sm:px-6 lg:pt-32">
           <AuthBackdrop />
-          <div className="mx-auto grid min-h-[calc(100dvh-9rem)] w-full max-w-6xl items-center lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
-            <div aria-hidden="true" className="hidden lg:block" />
-            <div className="mx-auto w-full max-w-sm rounded-2xl border border-white/55 bg-white/88 p-6 text-center text-slate-950 shadow-[0_28px_90px_-38px_rgba(34,211,238,0.9)] backdrop-blur-2xl lg:mx-0 lg:justify-self-end">
+          <div className="mx-auto grid min-h-[calc(100dvh-9rem)] w-full max-w-6xl items-center gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+            <AuthVisual reducedMotion={reducedMotion} />
+            <div className="mx-auto w-full max-w-sm rounded-[2rem] border border-white/60 bg-white/88 p-6 text-center text-slate-950 shadow-[0_28px_90px_-38px_rgba(34,211,238,0.9)] backdrop-blur-2xl lg:mx-0 lg:justify-self-end">
               <p className="text-lg font-semibold">Opening your dashboard</p>
               <p className="mt-2 text-sm text-slate-600">
                 Restoring your secure session on this device.
@@ -269,12 +283,12 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
       <main className="relative isolate min-h-dvh overflow-x-hidden overflow-y-auto px-4 pb-8 pt-28 text-white sm:px-6 lg:pt-32">
         <AuthBackdrop />
 
-        <div className="mx-auto grid min-h-[calc(100dvh-9rem)] w-full max-w-6xl items-center lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
-          <div aria-hidden="true" className="hidden lg:block" />
+        <div className="mx-auto grid min-h-[calc(100dvh-9rem)] w-full max-w-6xl items-center gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+          <AuthVisual reducedMotion={reducedMotion} />
 
           <motion.section
             data-auth-card
-            className="relative mx-auto w-full max-w-[420px] overflow-hidden rounded-2xl border border-white/60 bg-white/90 px-6 pb-6 pt-7 text-slate-950 shadow-[0_30px_110px_-42px_rgba(34,211,238,0.95)] backdrop-blur-2xl sm:px-7 lg:mx-0 lg:justify-self-end"
+            className="relative mx-auto w-full max-w-[420px] overflow-hidden rounded-[2rem] border border-white/65 bg-white/88 px-6 pb-6 pt-7 text-slate-950 shadow-[0_30px_110px_-42px_rgba(34,211,238,0.95)] backdrop-blur-2xl sm:px-7 lg:mx-0 lg:justify-self-end"
             initial={
               reducedMotion ? false : { opacity: 0, x: 24, scale: 0.985 }
             }
@@ -317,7 +331,7 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
               </p>
 
               {!isReset && (
-                <div className="mx-auto mt-5 grid h-10 max-w-[230px] grid-cols-2 rounded-full border border-slate-200 bg-slate-100/80 p-1 text-xs font-semibold text-slate-600 shadow-inner shadow-slate-300/40">
+                <div className="mx-auto mt-5 grid h-11 max-w-[240px] grid-cols-2 rounded-full border border-slate-200 bg-slate-100/80 p-1 text-xs font-semibold text-slate-600 shadow-inner shadow-slate-300/40">
                   {(["login", "signup"] as const).map((item) => (
                     <button
                       key={item}
@@ -379,7 +393,7 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
                         placeholder="Full name"
                         value={displayName}
                         onChange={(event) => setDisplayName(event.target.value)}
-                        className="h-12 rounded-2xl border-slate-200 bg-white/85 pl-11 text-slate-950 shadow-[0_16px_40px_-30px_rgba(14,165,233,0.65)] placeholder:text-slate-400 focus:border-cyan-500/70 focus:ring-cyan-500/20"
+                        className="h-12 rounded-full border-slate-200 bg-white/86 pl-11 text-slate-950 shadow-[0_16px_40px_-30px_rgba(14,165,233,0.65)] placeholder:text-slate-400 focus:border-cyan-500/70 focus:ring-cyan-500/20"
                       />
                     </AuthField>
                   )}
@@ -390,11 +404,11 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
                       }
                       name="email"
                       type="email"
-                      placeholder={isReset ? "Email address" : "Username"}
+                      placeholder={isReset ? "Email address" : "Email address"}
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
                       required
-                      className="h-12 rounded-2xl border-slate-200 bg-white/85 pl-11 text-slate-950 shadow-[0_16px_40px_-30px_rgba(14,165,233,0.65)] placeholder:text-slate-400 focus:border-cyan-500/70 focus:ring-cyan-500/20"
+                      className="h-12 rounded-full border-slate-200 bg-white/86 pl-11 text-slate-950 shadow-[0_16px_40px_-30px_rgba(14,165,233,0.65)] placeholder:text-slate-400 focus:border-cyan-500/70 focus:ring-cyan-500/20"
                     />
                   </AuthField>
                   {!isReset && (
@@ -407,7 +421,7 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}
                         required
-                        className="h-12 rounded-2xl border-slate-200 bg-white/85 pl-11 pr-12 text-slate-950 shadow-[0_16px_40px_-30px_rgba(14,165,233,0.65)] placeholder:text-slate-400 focus:border-cyan-500/70 focus:ring-cyan-500/20"
+                        className="h-12 rounded-full border-slate-200 bg-white/86 pl-11 pr-12 text-slate-950 shadow-[0_16px_40px_-30px_rgba(14,165,233,0.65)] placeholder:text-slate-400 focus:border-cyan-500/70 focus:ring-cyan-500/20"
                       />
                       <button
                         type="button"
@@ -426,7 +440,7 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
                     </AuthField>
                   )}
                   <Button
-                    className="h-12 w-full rounded-2xl bg-[linear-gradient(135deg,#06b6d4,#4f46e5_58%,#a855f7)] text-white shadow-[0_24px_54px_-28px_rgba(14,165,233,0.9)] hover:shadow-[0_28px_64px_-30px_rgba(79,70,229,0.9)]"
+                    className="h-12 w-full rounded-full bg-[linear-gradient(135deg,#06b6d4,#4f46e5_58%,#a855f7)] text-white shadow-[0_24px_54px_-28px_rgba(14,165,233,0.9)] hover:shadow-[0_28px_64px_-30px_rgba(79,70,229,0.9)]"
                     type="submit"
                     disabled={busy}
                   >
@@ -440,7 +454,7 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
                 <div className="mt-4">
                   <Button
                     variant="outline"
-                    className="h-11 w-full rounded-2xl border-slate-200 bg-white/80 text-slate-800 hover:bg-cyan-50 hover:text-slate-950"
+                    className="h-11 w-full rounded-full border-slate-200 bg-white/80 text-slate-800 hover:bg-cyan-50 hover:text-slate-950"
                     disabled={busy}
                     onClick={async () => {
                       try {

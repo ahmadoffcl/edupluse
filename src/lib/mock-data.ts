@@ -64,6 +64,11 @@ export const demoUsers = {
 export const roleNav: Record<Role, NavItem[]> = {
   student: [
     { title: "Dashboard", href: "/student", icon: LayoutDashboard },
+    {
+      title: "Analytics",
+      href: "/student/analytics",
+      icon: ChartNoAxesCombined,
+    },
     { title: "Classes", href: "/student/classes", icon: GraduationCap },
     { title: "Upcoming", href: "/student/upcoming", icon: CalendarClock },
     {
@@ -80,6 +85,7 @@ export const roleNav: Record<Role, NavItem[]> = {
   teacher: [
     { title: "Dashboard", href: "/teacher", icon: LayoutDashboard },
     { title: "Classes", href: "/teacher/classes", icon: GraduationCap },
+    { title: "Requests", href: "/teacher/requests", icon: UserPlus },
     {
       title: "Assignments",
       href: "/teacher/assignments",
@@ -99,6 +105,7 @@ export const roleNav: Record<Role, NavItem[]> = {
     { title: "Users", href: "/admin/users", icon: UsersRound },
     { title: "ID Maker", href: "/admin/id-maker", icon: UserPlus },
     { title: "Invites", href: "/admin/invites", icon: UserPlus },
+    { title: "Contact", href: "/admin/contact", icon: MessageSquareText },
     { title: "Reports", href: "/admin/reports", icon: FileText },
     { title: "Analytics", href: "/admin/analytics", icon: ChartNoAxesCombined },
     { title: "Moderation", href: "/admin/moderation", icon: ShieldCheck },
@@ -109,6 +116,7 @@ export const roleNav: Record<Role, NavItem[]> = {
     { title: "Dashboard", href: "/admin", icon: Gauge },
     { title: "Organizations", href: "/admin/users", icon: GraduationCap },
     { title: "ID Maker", href: "/admin/id-maker", icon: UserPlus },
+    { title: "Contact", href: "/admin/contact", icon: MessageSquareText },
     { title: "Reports", href: "/admin/reports", icon: FileText },
     { title: "Settings", href: "/admin/settings", icon: Settings },
   ],

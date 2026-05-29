@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getCurrentAppSession } from "@/lib/auth/server";
 import { demoOrg, demoUsers } from "@/lib/mock-data";
 import { isDemoModeEnabled } from "@/lib/config";
 import {
@@ -549,6 +550,7 @@ export async function POST(request: Request) {
       orgId: membership.orgId,
       orgName: membership.orgName,
       deviceSessionId: body.deviceSessionId,
+      onboardingCompleted: membership.onboardingCompleted,
     });
 
     const response = NextResponse.json({
@@ -574,6 +576,30 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
+}
+
+export async function GET() {
+  const session = await getCurrentAppSession();
+
+  if (!session) {
+    return NextResponse.json({ ok: false }, { status: 401 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    user: {
+      uid: session.uid,
+      email: session.email,
+      displayName: session.displayName,
+      photoURL: null,
+      emailVerified: true,
+      role: session.role,
+      orgId: session.orgId,
+      orgName: session.orgName,
+      deviceSessionId: session.deviceSessionId,
+      onboardingCompleted: session.onboardingCompleted ?? true,
+    },
+  });
 }
 
 export async function DELETE() {

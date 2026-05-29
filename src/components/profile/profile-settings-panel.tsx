@@ -1,12 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { Bell, Camera, LockKeyhole, Save, ShieldCheck } from "lucide-react";
+import { type ChangeEvent, useState } from "react";
+import { updateProfile } from "firebase/auth";
+import {
+  Bell,
+  Camera,
+  LockKeyhole,
+  Save,
+  ShieldCheck,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
+import { getFirebaseAuth } from "@/lib/firebase/client";
 import type { ProfileSettingsData } from "@/lib/dashboard/profile-settings";
 import { initials } from "@/lib/utils";
 
@@ -28,6 +37,7 @@ export function ProfileSettingsPanel({
     publicLeaderboard: data.publicLeaderboard,
   });
   const [busy, setBusy] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
 
   function update<K extends keyof typeof form>(
     key: K,
@@ -65,6 +75,44 @@ export function ProfileSettingsPanel({
     }
   }
 
+  async function uploadAvatar(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setAvatarBusy(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+
+      const response = await fetch("/api/profile/avatar", {
+        method: "POST",
+        body,
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        avatarUrl?: string;
+        error?: string;
+      } | null;
+
+      if (!response.ok || !payload?.avatarUrl) {
+        throw new Error(payload?.error ?? "Unable to upload profile image.");
+      }
+
+      update("avatarUrl", payload.avatarUrl);
+      const auth = getFirebaseAuth();
+      if (auth?.currentUser) {
+        await updateProfile(auth.currentUser, { photoURL: payload.avatarUrl });
+      }
+      toast.success("Profile image updated");
+    } catch (error) {
+      toast.error("Profile image could not be updated", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      event.target.value = "";
+      setAvatarBusy(false);
+    }
+  }
+
   return (
     <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
       <aside className="xl:sticky xl:top-24 xl:self-start">
@@ -84,7 +132,20 @@ export function ProfileSettingsPanel({
                   initials(form.displayName)
                 )}
               </div>
-              <Badge className="mb-2 capitalize">{role}</Badge>
+              <div className="mb-2 space-y-2">
+                <Badge className="capitalize">{role}</Badge>
+                <label className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background/70 px-3 py-2 text-xs font-semibold transition hover:bg-muted">
+                  <Upload className="size-3.5" />
+                  {avatarBusy ? "Uploading..." : "Upload photo"}
+                  <input
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="sr-only"
+                    disabled={avatarBusy}
+                    type="file"
+                    onChange={uploadAvatar}
+                  />
+                </label>
+              </div>
             </div>
             <h2 className="mt-5 text-2xl font-semibold tracking-tight">
               {form.displayName || "EduPulse user"}

@@ -192,12 +192,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   function openSearchResult(href: string) {
     setSearchOpen(false);
     setSearchQuery("");
-    if (href !== pathname) setRoutePending(true);
-    router.push(href);
+    navigateTo(href);
   }
 
-  function beginRouteChange(href: string) {
-    if (href !== pathname) setRoutePending(true);
+  function navigateTo(href: string) {
+    if (href !== pathname) {
+      setRoutePending(true);
+      router.push(href);
+    }
     setOpenMobile(false);
   }
 
@@ -234,7 +236,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link
             href={homeForRole(user.role)}
             className="flex items-center gap-3"
-            onClick={() => beginRouteChange(homeForRole(user.role))}
+            onClick={(event) => {
+              event.preventDefault();
+              navigateTo(homeForRole(user.role));
+            }}
           >
             <BrandLogo showText={false} markClassName="size-11" />
             <span>
@@ -263,7 +268,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={() => beginRouteChange(item.href)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigateTo(item.href);
+                }}
                 className={cn(
                   "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-muted-foreground motion-safe hover:bg-muted hover:text-foreground",
                   active &&
@@ -418,8 +426,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                             className="w-full rounded-2xl border border-border bg-background/70 p-3 text-left text-sm transition hover:bg-muted"
                             onClick={() => {
                               if (item.actionUrl) {
-                                beginRouteChange(item.actionUrl);
-                                router.push(item.actionUrl);
+                                navigateTo(item.actionUrl);
                               }
                             }}
                           >
@@ -513,7 +520,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               key={item.href}
               href={item.href}
               aria-label={item.title}
-              onClick={() => beginRouteChange(item.href)}
+              onClick={(event) => {
+                event.preventDefault();
+                navigateTo(item.href);
+              }}
               className={cn(
                 "grid size-12 place-items-center rounded-full text-muted-foreground motion-safe hover:bg-muted hover:text-foreground",
                 active && "bg-primary text-primary-foreground",

@@ -8,6 +8,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -124,6 +125,7 @@ function applyLocalRole(
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const restoredSessionRef = useRef(false);
   const configured = isFirebaseConfigured();
   const demoMode = isDemoModeEnabled();
 
@@ -176,29 +178,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
+    let cancelled = false;
+    const restoreController = new AbortController();
+    const restoreTimer = window.setTimeout(
+      () => restoreController.abort(),
+      1_500,
+    );
+    const authFallbackTimer = window.setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, 2_500);
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/auth/session", {
+          cache: "no-store",
+          signal: restoreController.signal,
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          user?: AuthUser;
+        } | null;
+
+        if (!cancelled && response.ok && payload?.user) {
+          restoredSessionRef.current = true;
+          window.localStorage.setItem("lumina.active.role", payload.user.role);
+          setUser(payload.user);
+          setLoading(false);
+        }
+      } catch {
+        // Firebase restoration below remains the source of truth if the cookie
+        // session is absent, expired, or slow.
+      } finally {
+        window.clearTimeout(restoreTimer);
+      }
+    })();
+
     const demoRole = window.localStorage.getItem(storageKey) as Role | null;
     if (demoRole && demoUsers[demoRole]) {
-      queueMicrotask(() => setUser(userFromDemoRole(demoRole)));
+      queueMicrotask(() => {
+        restoredSessionRef.current = true;
+        setUser(userFromDemoRole(demoRole));
+        setLoading(false);
+      });
     }
 
     if (window.localStorage.getItem(localAdminStorageKey) === "true") {
-      queueMicrotask(() =>
+      queueMicrotask(() => {
+        restoredSessionRef.current = true;
         setUser(
           userFromLocalAdmin(
             window.localStorage.getItem(localAdminEmailStorageKey),
           ),
-        ),
-      );
+        );
+        setLoading(false);
+      });
     }
 
     const auth = getFirebaseAuth();
     if (!auth) {
       queueMicrotask(() => setLoading(false));
-      return;
+      return () => {
+        cancelled = true;
+        restoreController.abort();
+        window.clearTimeout(restoreTimer);
+        window.clearTimeout(authFallbackTimer);
+      };
     }
 
-    let cancelled = false;
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      window.clearTimeout(authFallbackTimer);
       if (!firebaseUser) {
         setLoading(false);
         return;
@@ -263,8 +310,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         } catch {
           if (cancelled) return;
-          window.localStorage.removeItem("lumina.active.role");
-          setUser(null);
+          if (!restoredSessionRef.current) {
+            window.localStorage.removeItem("lumina.active.role");
+            setUser(null);
+          }
         } finally {
           if (!cancelled) setLoading(false);
         }
@@ -273,6 +322,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true;
+      restoreController.abort();
+      window.clearTimeout(restoreTimer);
+      window.clearTimeout(authFallbackTimer);
       unsubscribe();
     };
   }, [createServerSession]);

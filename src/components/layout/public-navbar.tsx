@@ -82,7 +82,7 @@ export function PublicNavbar() {
             </Button>
             {searchOpen ? (
               <form
-                className="absolute right-0 top-12 w-[min(86vw,360px)] rounded-3xl border border-border bg-popover p-3 text-popover-foreground shadow-2xl"
+                className="fixed left-4 right-4 top-24 rounded-3xl border border-border bg-popover p-3 text-popover-foreground shadow-2xl sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-[min(86vw,360px)]"
                 onSubmit={(event) => {
                   event.preventDefault();
                   if (results[0]) go(results[0].href);

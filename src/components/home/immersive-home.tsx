@@ -70,19 +70,21 @@ export function ImmersiveHome() {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_14%,rgba(45,212,191,0.14),transparent_28%),radial-gradient(circle_at_82%_10%,rgba(99,102,241,0.16),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_42%)]" />
           <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-background to-transparent" />
           <div className="mx-auto max-w-7xl">
-            <div className="home-hero-frame relative min-h-[640px] overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-[0_45px_140px_-80px_rgba(91,124,255,0.9)] sm:rounded-[2.5rem] lg:min-h-[690px]">
-              <Image
-                src="/edupulse-hero.jpg"
-                alt="EduPulse digital classroom ecosystem"
-                fill
-                priority
-                sizes="(min-width: 1280px) 1280px, 100vw"
-                className="home-hero-art absolute inset-0 h-full w-full object-cover object-center"
-              />
-              <div className="absolute inset-0 bg-[linear-gradient(90deg,#000_0%,rgba(0,0,0,0.96)_22%,rgba(0,0,0,0.62)_48%,rgba(0,0,0,0.12)_78%)]" />
+            <div className="home-hero-frame relative min-h-[620px] overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-[0_45px_140px_-80px_rgba(91,124,255,0.9)] sm:min-h-[640px] sm:rounded-[2.5rem] lg:min-h-[690px]">
+              <div className="absolute inset-x-0 top-0 h-[52%] sm:inset-0 sm:h-auto">
+                <Image
+                  src="/edupulse-hero.jpg"
+                  alt="EduPulse digital classroom ecosystem"
+                  fill
+                  priority
+                  sizes="(min-width: 1280px) 1280px, 100vw"
+                  className="home-hero-art object-cover object-[68%_center] sm:object-center"
+                />
+              </div>
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08)_0%,rgba(0,0,0,0.22)_36%,#000_58%,#000_100%)] sm:bg-[linear-gradient(90deg,#000_0%,rgba(0,0,0,0.96)_22%,rgba(0,0,0,0.62)_48%,rgba(0,0,0,0.12)_78%)]" />
               <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-black to-transparent" />
               <div className="absolute left-8 top-8 hidden h-24 w-24 rounded-full bg-primary/20 blur-3xl sm:block" />
-              <div className="relative z-10 grid min-h-[640px] items-center px-5 py-8 sm:px-9 lg:min-h-[690px] lg:grid-cols-[0.82fr_1.18fr] lg:px-12">
+              <div className="relative z-10 grid min-h-[620px] items-end px-5 pb-10 pt-72 sm:min-h-[640px] sm:items-center sm:px-9 sm:py-8 lg:min-h-[690px] lg:grid-cols-[0.82fr_1.18fr] lg:px-12">
                 <FadeIn className="max-w-xl">
                   <Badge className="mb-5 border-white/10 bg-white/10 text-white shadow-2xl backdrop-blur-xl">
                     <Sparkles className="size-3" />

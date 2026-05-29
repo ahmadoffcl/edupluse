@@ -11,6 +11,7 @@ export type AppSession = {
   orgId: string;
   orgName: string;
   deviceSessionId: string;
+  onboardingCompleted?: boolean;
   exp: number;
 };
 
