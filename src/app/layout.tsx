@@ -40,9 +40,19 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var p=location.pathname;var auth=p==='/login'||p==='/signup'||p==='/reset-password';if(!auth&&sessionStorage.getItem('edupulse.welcome.seen')!=='true'){document.documentElement.classList.add('edupulse-welcome-pending');}}catch(e){}})();",
+          }}
+        />
+      </head>
       <body className="min-h-full">
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <div id="edupulse-app-content">
+            <AuthProvider>{children}</AuthProvider>
+          </div>
           <WelcomeIntro />
           <Toaster />
         </ThemeProvider>

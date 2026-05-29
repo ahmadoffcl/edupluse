@@ -174,7 +174,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Button>
         </div>
 
-        <nav className="max-h-[calc(100vh-17rem)] space-y-1 overflow-y-auto pr-1">
+        <nav className="max-h-[calc(100vh-8rem)] space-y-1 overflow-y-auto pr-1">
           {nav.map((item) => {
             const active =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -195,17 +195,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-
-        <div className="absolute inset-x-4 bottom-4 rounded-3xl border border-border bg-background/70 p-4">
-          <div className="mb-2 flex items-center gap-2">
-            <Sparkles className="size-4 text-primary" />
-            <p className="text-sm font-semibold">AI-ready workspace</p>
-          </div>
-          <p className="text-xs leading-5 text-muted-foreground">
-            Study assistant, summaries, and quiz drafts are scoped to your
-            active organization.
-          </p>
-        </div>
       </aside>
 
       <main className="min-h-screen px-3 pb-24 pt-4 sm:px-4 sm:pb-28 sm:pt-6 lg:pb-10 lg:pl-80 lg:pr-6 lg:pt-24">

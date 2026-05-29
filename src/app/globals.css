@@ -136,6 +136,12 @@ body {
   background-image: none;
 }
 
+html.edupulse-welcome-pending #edupulse-app-content,
+html.edupulse-welcome-active #edupulse-app-content {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .motion-safe {
   transition:
     transform 180ms ease,

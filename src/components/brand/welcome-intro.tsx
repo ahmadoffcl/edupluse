@@ -19,10 +19,28 @@ export function WelcomeIntro() {
     pathname === "/reset-password";
 
   useEffect(() => {
-    if (isAuthPage) return;
+    const root = document.documentElement;
+    if (isAuthPage) {
+      root.classList.remove(
+        "edupulse-welcome-active",
+        "edupulse-welcome-pending",
+      );
+      setState("hidden");
+      return;
+    }
 
     const alreadySeen = window.sessionStorage.getItem(introStorageKey);
-    if (alreadySeen === "true") return;
+    if (alreadySeen === "true") {
+      root.classList.remove(
+        "edupulse-welcome-active",
+        "edupulse-welcome-pending",
+      );
+      setState("hidden");
+      return;
+    }
+
+    root.classList.add("edupulse-welcome-active");
+    root.classList.remove("edupulse-welcome-pending");
 
     const frame = window.requestAnimationFrame(() => setState("typing"));
     return () => window.cancelAnimationFrame(frame);
@@ -70,6 +88,10 @@ export function WelcomeIntro() {
 
     const timeout = window.setTimeout(() => {
       window.sessionStorage.setItem(introStorageKey, "true");
+      document.documentElement.classList.remove(
+        "edupulse-welcome-active",
+        "edupulse-welcome-pending",
+      );
       setState("hidden");
     }, 520);
 
@@ -98,7 +120,7 @@ export function WelcomeIntro() {
           <span className="type-caret ml-1 inline-block h-[0.9em] w-1 translate-y-1 rounded-full bg-primary align-baseline" />
         </p>
         <div className="mt-8 grid w-full max-w-lg grid-cols-3 gap-2 text-xs font-semibold text-muted-foreground sm:text-sm">
-          {["Learning", "Analytics", "AI support"].map((item) => (
+          {["Learning", "Classes", "Progress"].map((item) => (
             <span
               key={item}
               className="rounded-full border border-border bg-card/70 px-3 py-2"
