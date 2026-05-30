@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Ban, Mail, ShieldCheck, UserCog } from "lucide-react";
+import { Ban, Mail, ShieldCheck, Trash2, UserCog } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { Role } from "@/lib/types";
@@ -35,6 +35,19 @@ export function AdminUserActions({
       throw new Error(data?.error ?? "Unable to update user.");
     }
 
+    router.refresh();
+  }
+
+  async function removeUser() {
+    const response = await fetch(`/api/admin/users/${membershipId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      throw new Error(data?.error ?? "Unable to remove user.");
+    }
     router.refresh();
   }
 
@@ -109,6 +122,23 @@ export function AdminUserActions({
           <Ban /> Suspend
         </Button>
       )}
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={async () => {
+          try {
+            await removeUser();
+            toast.success("User removed from this institute.");
+          } catch (error) {
+            toast.error("Remove failed", {
+              description:
+                error instanceof Error ? error.message : "Try again.",
+            });
+          }
+        }}
+      >
+        <Trash2 /> Remove
+      </Button>
     </div>
   );
 }

@@ -11,11 +11,13 @@ import { StudentPerformancePanel } from "@/components/student/student-performanc
 import { UpcomingTasksPanel } from "@/components/student/upcoming-tasks-panel";
 import { getDashboardData } from "@/lib/dashboard/server-data";
 import { getStudentPerformanceData } from "@/lib/dashboard/student-performance";
+import { getFeatureFlags } from "@/lib/server/feature-flags";
 
 export default async function StudentDashboardPage() {
-  const [data, performanceData] = await Promise.all([
+  const [data, performanceData, flags] = await Promise.all([
     getDashboardData(),
     getStudentPerformanceData(),
+    getFeatureFlags(),
   ]);
   const visibleMetrics = data.metrics
     .filter(
@@ -36,7 +38,7 @@ export default async function StudentDashboardPage() {
         <main className="space-y-4 sm:space-y-5">
           <StudentClassesPanel classes={data.classes} compact />
           <UpcomingTasksPanel tasks={data.upcomingTasks} compact />
-          <StudentMissionsPanel compact />
+          {flags.smartLearningEnabled ? <StudentMissionsPanel compact /> : null}
           <StudentPerformancePanel data={performanceData} />
         </main>
         <aside className="space-y-4 sm:space-y-5 xl:sticky xl:top-24 xl:self-start">

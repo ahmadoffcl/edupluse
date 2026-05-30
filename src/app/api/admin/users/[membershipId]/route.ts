@@ -98,3 +98,61 @@ export async function PATCH(
 
   return NextResponse.json({ ok: true });
 }
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ membershipId: string }> },
+) {
+  const session = await getCurrentAppSession();
+  const supabase = getSupabaseServiceClient();
+
+  if (!session || !isAdminRole(session.role)) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 403 });
+  }
+
+  if (!supabase) {
+    return NextResponse.json(
+      { error: "Workspace data is unavailable." },
+      { status: 503 },
+    );
+  }
+
+  const { membershipId } = await context.params;
+  const { data: targetMembership, error: targetError } = await supabase
+    .from("memberships")
+    .select("id,profile_id,role")
+    .eq("org_id", session.orgId)
+    .eq("id", membershipId)
+    .maybeSingle();
+
+  if (targetError || !targetMembership) {
+    return NextResponse.json({ error: "User not found." }, { status: 404 });
+  }
+
+  const { error } = await supabase
+    .from("memberships")
+    .delete()
+    .eq("id", membershipId)
+    .eq("org_id", session.orgId);
+
+  if (error) {
+    return NextResponse.json(
+      { error: "Unable to remove the user." },
+      { status: 500 },
+    );
+  }
+
+  await supabase.from("audit_logs").insert({
+    org_id: session.orgId,
+    actor_id: null,
+    action: "admin.user.removed",
+    entity: "memberships",
+    entity_id: targetMembership.id,
+    metadata: {
+      profileId: targetMembership.profile_id,
+      role: targetMembership.role,
+    },
+  });
+
+  return NextResponse.json({ ok: true });
+}

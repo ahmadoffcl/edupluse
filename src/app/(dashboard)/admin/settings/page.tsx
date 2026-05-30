@@ -1,32 +1,18 @@
-import { FeaturePage } from "@/components/dashboard/feature-page";
+import { FeatureFlagsPanel } from "@/components/admin/feature-flags-panel";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { getFeatureFlags } from "@/lib/server/feature-flags";
 
-export default function AdminSettingsPage() {
+export default async function AdminSettingsPage() {
+  const flags = await getFeatureFlags();
+
   return (
-    <FeaturePage
-      eyebrow="Platform configuration"
-      title="Configure institute policies, roles, AI, storage, and notifications."
-      description="Enterprise settings for multi-tenant operation, feature flags, security, and communication defaults."
-      action="Save configuration"
-      items={[
-        {
-          title: "Role permissions",
-          meta: "Student, teacher, admin",
-          stat: "Active",
-          tone: "success",
-        },
-        {
-          title: "Storage buckets",
-          meta: "Avatars, resources, submissions",
-          stat: "Guarded",
-          tone: "info",
-        },
-        {
-          title: "AI controls",
-          meta: "Rate limits and audit logs",
-          stat: "Guarded",
-          tone: "success",
-        },
-      ]}
-    />
+    <div className="space-y-5">
+      <PageHeader
+        eyebrow="Platform configuration"
+        title="Control institute features and defaults."
+        description="Keep experimental or advanced areas hidden until your institute is ready to use them."
+      />
+      <FeatureFlagsPanel smartLearningEnabled={flags.smartLearningEnabled} />
+    </div>
   );
 }

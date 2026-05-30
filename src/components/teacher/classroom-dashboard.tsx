@@ -711,20 +711,27 @@ function TeacherHomeStats({ data }: { data: TeacherWorkflowData }) {
   ];
 
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid grid-cols-3 gap-2 sm:gap-3">
       {stats.map(({ label, value, icon: Icon, tone }) => (
         <div
           key={label}
-          className="flex items-center gap-3 rounded-[1.75rem] border border-border bg-card/85 p-4"
+          className="min-w-0 rounded-2xl border border-border bg-card/85 p-2.5 text-center sm:flex sm:items-center sm:gap-3 sm:rounded-[1.75rem] sm:p-4 sm:text-left"
         >
           <span
-            className={cn("grid size-11 place-items-center rounded-2xl", tone)}
+            className={cn(
+              "mx-auto grid size-9 place-items-center rounded-2xl sm:mx-0 sm:size-11",
+              tone,
+            )}
           >
-            <Icon className="size-5" />
+            <Icon className="size-4 sm:size-5" />
           </span>
-          <span>
-            <span className="block text-2xl font-semibold">{value}</span>
-            <span className="text-sm text-muted-foreground">{label}</span>
+          <span className="mt-1 block min-w-0 sm:mt-0">
+            <span className="block text-lg font-semibold leading-5 sm:text-2xl">
+              {value}
+            </span>
+            <span className="block truncate text-[11px] text-muted-foreground sm:text-sm">
+              {label}
+            </span>
           </span>
         </div>
       ))}

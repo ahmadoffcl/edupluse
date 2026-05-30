@@ -57,6 +57,8 @@ export function StudentClassesPanel({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [requestingId, setRequestingId] = useState<string | null>(null);
+  const [joinCode, setJoinCode] = useState("");
+  const [joiningCode, setJoiningCode] = useState(false);
   const [visibleCount, setVisibleCount] = useState(
     compact ? 8 : CLASS_PAGE_SIZE,
   );
@@ -135,6 +137,37 @@ export function StudentClassesPanel({
     }
   }
 
+  async function joinByCode() {
+    if (!joinCode.trim()) return;
+    setJoiningCode(true);
+    try {
+      const response = await fetch("/api/student/classes/join-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: joinCode.trim() }),
+      });
+      const result = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        className?: string;
+        error?: string;
+      } | null;
+      if (!response.ok || result?.ok === false) {
+        throw new Error(result?.error ?? "Unable to join class.");
+      }
+      toast.success("Class joined", {
+        description: result?.className ?? "Your class is now available.",
+      });
+      setJoinCode("");
+      router.refresh();
+    } catch (error) {
+      toast.error("Class code failed", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setJoiningCode(false);
+    }
+  }
+
   if (panelClasses.length === 0) {
     return (
       <EmptyState
@@ -184,6 +217,20 @@ export function StudentClassesPanel({
               {filteredClasses.length} class
               {filteredClasses.length === 1 ? "" : "es"}
             </Badge>
+            <div className="flex gap-2 md:w-80">
+              <Input
+                value={joinCode}
+                onChange={(event) => setJoinCode(event.target.value)}
+                placeholder="Join by class code"
+              />
+              <Button
+                type="button"
+                disabled={joiningCode || !joinCode.trim()}
+                onClick={joinByCode}
+              >
+                {joiningCode ? "Joining..." : "Join"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : null}

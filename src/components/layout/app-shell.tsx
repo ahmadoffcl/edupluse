@@ -45,6 +45,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [smartLearningEnabled, setSmartLearningEnabled] = useState(false);
   const [routePending, setRoutePending] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<
     NotificationPermission | "unsupported"
@@ -84,7 +85,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [loading, pathname, router, user]);
 
-  const nav = useMemo(() => roleNav[user?.role ?? "student"], [user?.role]);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    async function loadFeatures() {
+      try {
+        const response = await fetch("/api/features", { cache: "no-store" });
+        const payload = (await response.json().catch(() => null)) as {
+          flags?: { smartLearningEnabled?: boolean };
+        } | null;
+        if (!cancelled) {
+          setSmartLearningEnabled(
+            Boolean(payload?.flags?.smartLearningEnabled),
+          );
+        }
+      } catch {
+        if (!cancelled) setSmartLearningEnabled(false);
+      }
+    }
+    void loadFeatures();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const nav = useMemo(() => {
+    const items = roleNav[user?.role ?? "student"];
+    if (smartLearningEnabled) return items;
+    return items.filter((item) => item.href !== "/student/missions");
+  }, [smartLearningEnabled, user?.role]);
   const searchItems = useMemo(
     () =>
       nav.map((item) => ({

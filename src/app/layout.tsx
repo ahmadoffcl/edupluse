@@ -24,8 +24,10 @@ export const metadata: Metadata = {
   description:
     "A premium multi-tenant education platform for schools, academies, coaching centers, and online classes.",
   metadataBase: new URL("https://edupulse.vercel.app"),
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: "/edupulse-logo.svg",
+    apple: "/edupulse-logo.svg",
   },
 };
 
