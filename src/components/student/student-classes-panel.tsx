@@ -413,7 +413,9 @@ function ClassHero({ classRecord }: { classRecord: StudentClassRow }) {
           </Badge>
           {classRecord.teacherName ? (
             <Badge className="w-fit border-white/20 bg-white/12 text-white">
-              {classRecord.teacherName}
+              {classRecord.teachers.length > 1
+                ? `${classRecord.teachers.length} teachers`
+                : classRecord.teacherName}
             </Badge>
           ) : null}
         </div>
@@ -615,6 +617,7 @@ function StreamPanel({ classRecord }: { classRecord: StudentClassRow }) {
                 <p className="font-semibold">{post.title}</p>
                 {post.publishedAt ? (
                   <p className="text-xs text-muted-foreground">
+                    {post.authorName ? `${post.authorName} - ` : ""}
                     {formatDateTime(post.publishedAt)}
                   </p>
                 ) : null}
@@ -667,21 +670,37 @@ function PeoplePanel({ classRecord }: { classRecord: StudentClassRow }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <UserRound className="size-5 text-primary" />
-            Teacher
+            Teachers
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-3 rounded-3xl border border-border bg-background/60 p-4">
-            <span className="grid size-11 place-items-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-              {initials(classRecord.teacherName || "Teacher")}
-            </span>
-            <div>
-              <p className="font-semibold">
-                {classRecord.teacherName || "Teacher"}
-              </p>
-              <p className="text-sm text-muted-foreground">Class owner</p>
+        <CardContent className="space-y-3">
+          {(classRecord.teachers.length
+            ? classRecord.teachers
+            : [
+                {
+                  id: "teacher",
+                  name: classRecord.teacherName || "Teacher",
+                  username: null,
+                  email: null,
+                  role: "owner" as const,
+                },
+              ]
+          ).map((teacher) => (
+            <div
+              key={teacher.id}
+              className="flex items-center gap-3 rounded-3xl border border-border bg-background/60 p-4"
+            >
+              <span className="grid size-11 place-items-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                {initials(teacher.name)}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate font-semibold">{teacher.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {teacher.role === "owner" ? "Class owner" : "Co-teacher"}
+                </p>
+              </div>
             </div>
-          </div>
+          ))}
         </CardContent>
       </Card>
 

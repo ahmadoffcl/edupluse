@@ -2,6 +2,7 @@ import "server-only";
 import { getCurrentAppSession } from "@/lib/auth/server";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { loadStudentTimetableSessions } from "@/lib/timetable/scheduler";
+import { classifyAssignmentKind } from "@/lib/learning/item-classifier";
 import type {
   Activity,
   Assignment,
@@ -40,6 +41,13 @@ export type StudentClassRow = {
   capacity: number | null;
   scheduleNote: string | null;
   teacherName: string | null;
+  teachers: Array<{
+    id: string;
+    name: string;
+    username: string | null;
+    email: string | null;
+    role: "owner" | "co_teacher";
+  }>;
   enrollmentStatus: "enrolled" | "pending" | "suggested" | "available";
   joinRequestId: string | null;
   suggestedReason: string | null;
@@ -58,6 +66,7 @@ export type StudentClassRow = {
     id: string;
     title: string;
     body: string;
+    authorName: string | null;
     publishedAt: string | null;
   }>;
 };
@@ -387,6 +396,43 @@ export async function getDashboardData(): Promise<DashboardData> {
     }
   }
 
+  let classTeacherRows: DbRecord[] = [];
+  if (isStudent) {
+    const classTeachersResult = await db
+      .from("class_teachers")
+      .select(
+        "class_id,teacher_id,role,status,removed_at,profiles!class_teachers_teacher_id_fkey(id,display_name,username,email)",
+      )
+      .eq("org_id", currentSession.orgId)
+      .eq("status", "active")
+      .is("removed_at", null)
+      .limit(1000);
+
+    let classTeachersData: unknown[] | null = classTeachersResult.data;
+    let classTeachersError: unknown = classTeachersResult.error;
+    if (
+      classTeachersResult.error &&
+      isMissingColumn(classTeachersResult.error, "status")
+    ) {
+      const fallbackClassTeachersResult = await db
+        .from("class_teachers")
+        .select(
+          "class_id,teacher_id,role,removed_at,profiles!class_teachers_teacher_id_fkey(id,display_name,username,email)",
+        )
+        .eq("org_id", currentSession.orgId)
+        .is("removed_at", null)
+        .limit(1000);
+      classTeachersData = fallbackClassTeachersResult.data;
+      classTeachersError = fallbackClassTeachersResult.error;
+    }
+
+    if (!classTeachersError) {
+      classTeacherRows = (classTeachersData ?? []) as unknown as DbRecord[];
+    } else if (!isMissingRelation(classTeachersError, "class_teachers")) {
+      classTeacherRows = [];
+    }
+  }
+
   async function loadAssignments(select: string) {
     if (isStudent && enrolledClassIds.length === 0) {
       return { data: [], error: null };
@@ -481,7 +527,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       .limit(1000),
     db
       .from("announcements")
-      .select("id,title,body,published_at,class_id,classes(name)")
+      .select("id,title,body,published_at,class_id,created_by,classes(name)")
       .eq("org_id", currentSession.orgId)
       .order("created_at", { ascending: false })
       .limit(1000),
@@ -510,6 +556,26 @@ export async function getDashboardData(): Promise<DashboardData> {
   const gamificationRows = (gamificationResult.data ?? []) as DbRecord[];
   const notificationRows = (notificationsResult.data ?? []) as DbRecord[];
   const announcementRows = (announcementsResult.data ?? []) as DbRecord[];
+  const announcementAuthorIds = Array.from(
+    new Set(
+      announcementRows
+        .map((row) => stringValue(row.created_by))
+        .filter(Boolean),
+    ),
+  );
+  const announcementAuthorsResult = announcementAuthorIds.length
+    ? await db
+        .from("profiles")
+        .select("id,display_name")
+        .in("id", announcementAuthorIds)
+        .limit(1000)
+    : { data: [], error: null };
+  const announcementAuthors = new Map(
+    ((announcementAuthorsResult.data ?? []) as DbRecord[]).map((row) => [
+      stringValue(row.id),
+      stringValue(row.display_name, "Teacher"),
+    ]),
+  );
   const attachmentUrlMap = new Map<string, string>();
   await Promise.all(
     assignmentRows.flatMap((row) =>
@@ -750,8 +816,28 @@ export async function getDashboardData(): Promise<DashboardData> {
       .filter(([classId]) => Boolean(classId)),
   );
 
+  const teachersByClass = new Map<string, StudentClassRow["teachers"]>();
+  for (const row of classTeacherRows) {
+    const classId = stringValue(row.class_id);
+    const profile = relation(row, "profiles");
+    const teacherId = stringValue(profile?.id) || stringValue(row.teacher_id);
+    if (!classId || !teacherId) continue;
+
+    const current = teachersByClass.get(classId) ?? [];
+    if (!current.some((teacher) => teacher.id === teacherId)) {
+      current.push({
+        id: teacherId,
+        name: stringValue(profile?.display_name, "Teacher"),
+        username: stringValue(profile?.username) || null,
+        email: stringValue(profile?.email) || null,
+        role: stringValue(row.role) === "owner" ? "owner" : "co_teacher",
+      });
+    }
+    teachersByClass.set(classId, current);
+  }
+
   const classes: StudentClassRow[] = Array.from(classRecordsById.entries())
-    .map(([classId, classRecord]) => {
+    .map<StudentClassRow | null>(([classId, classRecord]) => {
       if (!classId) return null;
 
       const isEnrolled = enrolledClassIds.includes(classId);
@@ -769,6 +855,27 @@ export async function getDashboardData(): Promise<DashboardData> {
             : "available";
 
       const teacher = relation(classRecord, "profiles");
+      const primaryTeacherId = stringValue(classRecord?.teacher_id);
+      const primaryTeacherName = stringValue(teacher?.display_name) || null;
+      const teachers: StudentClassRow["teachers"] = [
+        ...(teachersByClass.get(classId) ?? []),
+      ];
+      if (
+        primaryTeacherId &&
+        !teachers.some((teacherRecord) => teacherRecord.id === primaryTeacherId)
+      ) {
+        teachers.unshift({
+          id: primaryTeacherId,
+          name: primaryTeacherName ?? "Teacher",
+          username: null,
+          email: null,
+          role: "owner",
+        });
+      }
+      const teacherName: string | null =
+        teachers.length > 1
+          ? `${teachers[0]?.name ?? "Teacher"} + ${teachers.length - 1} co-teacher${teachers.length - 1 === 1 ? "" : "s"}`
+          : (teachers[0]?.name ?? primaryTeacherName ?? null);
       const classResources = isEnrolled
         ? visibleResourceRows.filter(
             (resource) => stringValue(resource.class_id) === classId,
@@ -809,7 +916,8 @@ export async function getDashboardData(): Promise<DashboardData> {
             ? numberValue(classRecord.capacity)
             : null,
         scheduleNote: stringValue(classRecord?.schedule_note) || null,
-        teacherName: stringValue(teacher?.display_name) || null,
+        teacherName,
+        teachers,
         enrollmentStatus,
         joinRequestId: stringValue(requestRow?.id) || null,
         suggestedReason,
@@ -823,6 +931,9 @@ export async function getDashboardData(): Promise<DashboardData> {
           id: stringValue(announcement.id, crypto.randomUUID()),
           title: stringValue(announcement.title, "Announcement"),
           body: stringValue(announcement.body),
+          authorName:
+            announcementAuthors.get(stringValue(announcement.created_by)) ??
+            teacherName,
           publishedAt: stringValue(announcement.published_at) || null,
         })),
       } satisfies StudentClassRow;
@@ -883,7 +994,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       .map((assignment) => ({
         id: assignment.id,
         title: assignment.title,
-        kind: "assignment" as const,
+        kind: classifyAssignmentKind({
+          title: assignment.title,
+          instructions: assignment.instructions,
+        }),
         dueAt: assignment.dueDate,
         className: assignment.className,
         status: assignment.status,

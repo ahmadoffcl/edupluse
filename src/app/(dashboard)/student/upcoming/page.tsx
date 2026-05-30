@@ -8,7 +8,7 @@ export default async function StudentUpcomingTasksPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Task center"
+        eyebrow="Focus center"
         title="Everything coming up next."
         description="Real assignment deadlines, quiz alerts, live classes, and major class events from your enrolled classrooms."
       />

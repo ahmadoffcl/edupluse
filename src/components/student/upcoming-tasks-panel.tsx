@@ -133,6 +133,12 @@ function TaskCard({
 }) {
   const meta = kindMeta[task.kind];
   const Icon = meta.icon;
+  const actionLabel =
+    task.kind === "exam"
+      ? "Open quiz"
+      : task.kind === "assignment"
+        ? "Open assignment"
+        : "Open";
   const days = daysLeft(task.dueAt);
   const urgent =
     task.kind === "exam" || task.kind === "live" || (days ?? 99) <= 2;
@@ -191,7 +197,7 @@ function TaskCard({
 
         <Button asChild className="mt-3 w-full" variant="outline">
           <Link href={task.href}>
-            Open task <ArrowRight />
+            {actionLabel} <ArrowRight />
           </Link>
         </Button>
       </CardContent>
@@ -251,7 +257,7 @@ export function UpcomingTasksPanel({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold tracking-tight">
-            Upcoming tasks
+            Upcoming focus
           </h2>
           <p className="text-sm text-muted-foreground">
             Assignments, quizzes, live classes, and major events from your real
@@ -261,7 +267,7 @@ export function UpcomingTasksPanel({
         {compact ? (
           <Button asChild size="sm" variant="outline">
             <Link href="/student/upcoming">
-              Open task center <ArrowRight />
+              Open focus center <ArrowRight />
             </Link>
           </Button>
         ) : null}
@@ -303,7 +309,7 @@ export function UpcomingTasksPanel({
                 </button>
               ))}
               <Badge variant="secondary" className="min-w-fit">
-                {filteredTasks.length} task
+                {filteredTasks.length} item
                 {filteredTasks.length === 1 ? "" : "s"}
               </Badge>
             </div>
@@ -325,7 +331,7 @@ export function UpcomingTasksPanel({
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <CheckCircle2 className="size-5 text-primary" />
-                Task focus
+                Today focus
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-2">

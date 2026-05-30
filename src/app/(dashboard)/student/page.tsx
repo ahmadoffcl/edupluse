@@ -51,7 +51,7 @@ export default async function StudentDashboardPage() {
             {(
               [
                 ["Classes", data.classes.length, BookOpen],
-                ["Tasks", data.upcomingTasks.length, CalendarClock],
+                ["Due", data.upcomingTasks.length, CalendarClock],
                 ["XP", data.totalXp, Sparkles],
               ] satisfies Array<[string, number, LucideIcon]>
             ).map(([label, value, Icon]) => (

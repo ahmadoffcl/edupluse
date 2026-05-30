@@ -12,6 +12,12 @@ import {
   validateTeacherUpload,
 } from "@/lib/server/upload-validation";
 import { sendProfileNotificationEmails } from "@/lib/email/server";
+import {
+  assignmentKindLabel,
+  assignmentPostedTitle,
+  assignmentReminderTitle,
+  classifyAssignmentKind,
+} from "@/lib/learning/item-classifier";
 
 export const runtime = "nodejs";
 
@@ -154,6 +160,11 @@ export async function POST(request: Request) {
   }
 
   const status = body.publish ? "published" : "draft";
+  const itemKind = classifyAssignmentKind({
+    title: body.title,
+    instructions: body.instructions,
+  });
+  const itemLabel = assignmentKindLabel(itemKind);
   const assignmentPayload = {
     org_id: context.session.orgId,
     class_id: body.classId,
@@ -236,9 +247,9 @@ export async function POST(request: Request) {
     const rows: AssignmentNotification[] = [
       {
         ...base,
-        title: "New assignment",
-        body: `${body.title} has been posted. Deadline: ${deadlineLabel(body.dueAt)}.`,
-        kind: "assignment",
+        title: assignmentPostedTitle(itemKind),
+        body: `${body.title} has been posted. ${itemLabel} deadline: ${deadlineLabel(body.dueAt)}.`,
+        kind: itemKind === "exam" ? "exam" : "assignment",
       },
     ];
 
@@ -248,18 +259,18 @@ export async function POST(request: Request) {
       if (oneDay) {
         rows.push({
           ...base,
-          title: "Assignment due tomorrow",
+          title: assignmentReminderTitle(itemKind, "tomorrow"),
           body: `${body.title} is due on ${deadlineLabel(body.dueAt)}.`,
-          kind: "assignment_reminder",
+          kind: itemKind === "exam" ? "exam_reminder" : "assignment_reminder",
           scheduled_for: oneDay,
         });
       }
       if (oneHour) {
         rows.push({
           ...base,
-          title: "Assignment due in 1 hour",
+          title: assignmentReminderTitle(itemKind, "hour"),
           body: `${body.title} is due at ${deadlineLabel(body.dueAt)}.`,
-          kind: "assignment_reminder",
+          kind: itemKind === "exam" ? "exam_reminder" : "assignment_reminder",
           scheduled_for: oneHour,
         });
       }
@@ -299,10 +310,10 @@ export async function POST(request: Request) {
     profileIds: ((enrollments ?? []) as Array<{ student_id: string }>).map(
       (enrollment) => enrollment.student_id,
     ),
-    subject: `New assignment: ${body.title}`,
-    eyebrow: "New assignment",
+    subject: `${assignmentPostedTitle(itemKind)}: ${body.title}`,
+    eyebrow: assignmentPostedTitle(itemKind),
     title: body.title,
-    body: `{name}, your teacher posted a new assignment. Deadline: ${deadlineLabel(body.dueAt)}.`,
+    body: `{name}, your teacher posted a new ${itemLabel.toLowerCase()}. Deadline: ${deadlineLabel(body.dueAt)}.`,
     detailLabel: "Deadline",
     detailValue: deadlineLabel(body.dueAt),
     actionLabel: "Open assignment",

@@ -88,8 +88,8 @@ function isMissingRelation(error: unknown, relation: string) {
     candidate.code === "PGRST205" ||
     Boolean(
       candidate.message?.includes(relation) &&
-        (candidate.message.includes("schema cache") ||
-          candidate.message.includes("does not exist")),
+      (candidate.message.includes("schema cache") ||
+        candidate.message.includes("does not exist")),
     )
   );
 }
@@ -230,6 +230,7 @@ export type TeacherAnnouncementRow = {
   body: string;
   classId: string | null;
   className: string | null;
+  authorName: string | null;
   publishedAt: string | null;
 };
 
@@ -404,7 +405,10 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
       .is("removed_at", null)
       .limit(1000);
 
-    if (coTeacherResult.error && isMissingColumn(coTeacherResult.error, "status")) {
+    if (
+      coTeacherResult.error &&
+      isMissingColumn(coTeacherResult.error, "status")
+    ) {
       coTeacherResult = await db
         .from("class_teachers")
         .select("class_id")
@@ -664,9 +668,7 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
         teacherEmail: stringValue(profile?.email) || null,
         role: stringValue(row.role, "co_teacher"),
         status:
-          status === "pending" || status === "rejected"
-            ? status
-            : "active",
+          status === "pending" || status === "rejected" ? status : "active",
         requestedAt: stringValue(row.requested_at) || null,
         joinedAt: stringValue(row.joined_at) || null,
         approvedAt: stringValue(row.approved_at) || null,
@@ -822,7 +824,7 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
       .limit(120),
     db
       .from("announcements")
-      .select("id,title,body,published_at,class_id,classes(name)")
+      .select("id,title,body,published_at,class_id,created_by,classes(name)")
       .eq("org_id", currentSession.orgId)
       .is("archived_at", null)
       .order("created_at", { ascending: false })
@@ -965,6 +967,27 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
           (row) => filterByVisibleClass(row) || !stringValue(row.class_id),
         ) as DbRecord[])
       : [];
+
+  const announcementAuthorIds = Array.from(
+    new Set(
+      announcementRowsRaw
+        .map((row) => stringValue(row.created_by))
+        .filter(Boolean),
+    ),
+  );
+  const announcementAuthorsResult = announcementAuthorIds.length
+    ? await db
+        .from("profiles")
+        .select("id,display_name")
+        .in("id", announcementAuthorIds)
+        .limit(1000)
+    : { data: [], error: null };
+  const announcementAuthors = new Map(
+    ((announcementAuthorsResult.data ?? []) as DbRecord[]).map((row) => [
+      stringValue(row.id),
+      stringValue(row.display_name, "Teacher"),
+    ]),
+  );
 
   const signedUrls = await Promise.all(
     resourceRowsRaw.map(async (row) => {
@@ -1407,6 +1430,8 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
         body: stringValue(row.body),
         classId: stringValue(row.class_id) || null,
         className: stringValue(classRecord?.name) || null,
+        authorName:
+          announcementAuthors.get(stringValue(row.created_by)) ?? null,
         publishedAt: stringValue(row.published_at) || null,
       };
     },

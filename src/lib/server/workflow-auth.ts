@@ -78,8 +78,8 @@ function isMissingRelation(error: unknown, relation: string) {
     candidate.code === "PGRST205" ||
     Boolean(
       candidate.message?.includes(relation) &&
-        (candidate.message.includes("schema cache") ||
-          candidate.message.includes("does not exist")),
+      (candidate.message.includes("schema cache") ||
+        candidate.message.includes("does not exist")),
     )
   );
 }
@@ -93,8 +93,8 @@ function isMissingColumn(error: unknown, column: string) {
     candidate.code === "PGRST204" ||
     Boolean(
       candidate.message?.includes(column) &&
-        (candidate.message.includes("schema cache") ||
-          candidate.message.includes("does not exist")),
+      (candidate.message.includes("schema cache") ||
+        candidate.message.includes("does not exist")),
     )
   );
 }
@@ -322,13 +322,33 @@ export async function requireAnnouncementAccess(
   if (error) return jsonError("Unable to verify announcement access.", 500);
   if (!data) return jsonError("Announcement was not found.", 404);
 
-  if (
-    !canManageTeacherOwnedRecord({
+  let classOwnerId: string | null = null;
+  if (data.class_id) {
+    const { data: classRecord } = await context.supabase
+      .from("classes")
+      .select("teacher_id")
+      .eq("id", data.class_id)
+      .eq("org_id", context.session.orgId)
+      .maybeSingle();
+    classOwnerId =
+      classRecord && typeof classRecord.teacher_id === "string"
+        ? classRecord.teacher_id
+        : null;
+  }
+  const canEdit =
+    canManageTeacherOwnedRecord({
       role: context.session.role,
       profileId: context.profileId,
       ownerId: data.created_by,
-    })
-  ) {
+    }) ||
+    canManageTeacherOwnedRecord({
+      role: context.session.role,
+      profileId: context.profileId,
+      ownerId: classOwnerId,
+    }) ||
+    (await hasClassTeacherAccess(context, data.class_id as string));
+
+  if (!canEdit) {
     return jsonError("You do not have access to this announcement.", 403);
   }
 

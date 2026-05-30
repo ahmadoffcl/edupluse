@@ -12,17 +12,21 @@ import {
   ChevronRight,
   ClipboardList,
   Clock3,
+  Edit3,
   FileSearch,
   FileText,
   ImageIcon,
   Link2,
   Megaphone,
   Plus,
+  Save,
   Search,
   Send,
   Sparkles,
+  Trash2,
   UserMinus,
   UsersRound,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ClassroomCard as PremiumClassroomCard } from "@/components/classroom/classroom-card";
@@ -1000,11 +1004,7 @@ function showFormError(title: string, error: unknown) {
   });
 }
 
-function PendingTeacherApprovalNotice({
-  data,
-}: {
-  data: TeacherWorkflowData;
-}) {
+function PendingTeacherApprovalNotice({ data }: { data: TeacherWorkflowData }) {
   if (data.pendingTeacherInvites.length === 0) return null;
 
   return (
@@ -1061,6 +1061,7 @@ export function TeacherClassroomDetail({
     "stream" | "classwork" | "materials" | "people"
   >(initialTab);
   const [busy, setBusy] = useState<string | null>(null);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const students = classStudents(data, classRecord.id);
   const assignments = classAssignments(data, classRecord.id);
   const resources = classResources(data, classRecord.id);
@@ -1110,6 +1111,59 @@ export function TeacherClassroomDetail({
       router.refresh();
     } catch (error) {
       showFormError("Announcement failed", error);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function updateAnnouncement(
+    event: FormEvent<HTMLFormElement>,
+    announcementId: string,
+  ) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const busyId = `announcement:${announcementId}:save`;
+    setBusy(busyId);
+    try {
+      await parseResponse(
+        await fetch(`/api/teacher/announcements/${announcementId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            classId: classRecord.id,
+            title: String(form.get("title") ?? ""),
+            body: String(form.get("body") ?? ""),
+          }),
+        }),
+        "Unable to update post.",
+      );
+      toast.success("Post updated.");
+      setEditingPostId(null);
+      router.refresh();
+    } catch (error) {
+      showFormError("Post update failed", error);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteAnnouncement(announcementId: string) {
+    const confirmed = window.confirm("Delete this class post?");
+    if (!confirmed) return;
+
+    const busyId = `announcement:${announcementId}:delete`;
+    setBusy(busyId);
+    try {
+      await parseResponse(
+        await fetch(`/api/teacher/announcements/${announcementId}`, {
+          method: "DELETE",
+        }),
+        "Unable to delete post.",
+      );
+      toast.success("Post deleted.");
+      router.refresh();
+    } catch (error) {
+      showFormError("Post delete failed", error);
     } finally {
       setBusy(null);
     }
@@ -1295,17 +1349,90 @@ export function TeacherClassroomDetail({
                 announcements.map((announcement) => (
                   <Card key={announcement.id}>
                     <CardContent className="p-5">
-                      <p className="text-sm font-semibold">
-                        {announcement.title}
-                      </p>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {announcement.body}
-                      </p>
-                      {announcement.publishedAt ? (
-                        <p className="mt-4 text-xs text-muted-foreground">
-                          {formatDate(announcement.publishedAt)}
-                        </p>
-                      ) : null}
+                      {editingPostId === announcement.id ? (
+                        <form
+                          className="space-y-3"
+                          onSubmit={(event) =>
+                            updateAnnouncement(event, announcement.id)
+                          }
+                        >
+                          <Input
+                            required
+                            name="title"
+                            defaultValue={announcement.title}
+                          />
+                          <Textarea
+                            required
+                            name="body"
+                            defaultValue={announcement.body}
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              disabled={
+                                busy === `announcement:${announcement.id}:save`
+                              }
+                            >
+                              <Save /> Save post
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => setEditingPostId(null)}
+                            >
+                              <X /> Cancel
+                            </Button>
+                          </div>
+                        </form>
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold">
+                                {announcement.title}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {announcement.authorName
+                                  ? `${announcement.authorName} - `
+                                  : ""}
+                                {announcement.publishedAt
+                                  ? formatDate(announcement.publishedAt)
+                                  : "Posted"}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 gap-1">
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                onClick={() =>
+                                  setEditingPostId(announcement.id)
+                                }
+                                aria-label="Edit post"
+                              >
+                                <Edit3 className="size-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                disabled={
+                                  busy ===
+                                  `announcement:${announcement.id}:delete`
+                                }
+                                onClick={() =>
+                                  void deleteAnnouncement(announcement.id)
+                                }
+                                aria-label="Delete post"
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
+                          </div>
+                          <p className="mt-3 text-sm text-muted-foreground">
+                            {announcement.body}
+                          </p>
+                        </>
+                      )}
                     </CardContent>
                   </Card>
                 ))

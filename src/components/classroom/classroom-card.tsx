@@ -69,6 +69,9 @@ export function ClassroomCard({
   const reduceMotion = useReducedMotion();
   const deadline = formatDeadline(nextDeadline);
   const meta = [section, term].filter(Boolean).join(" - ") || roleLabel;
+  const teacherCaption = teacherName?.includes("co-teacher")
+    ? "Teaching team"
+    : "Class owner";
   const body = (
     <>
       <div className="relative h-32 overflow-hidden bg-[#070a12] sm:h-40">
@@ -113,7 +116,7 @@ export function ClassroomCard({
                 {teacherName || roleLabel}
               </span>
               <span className="block text-xs text-muted-foreground">
-                Class owner
+                {teacherCaption}
               </span>
             </span>
           </div>
