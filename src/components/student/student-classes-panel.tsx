@@ -236,7 +236,7 @@ export function StudentClassesPanel({
       ) : null}
 
       {!compact ? (
-        <div className="grid gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-4 gap-2">
           {[
             ["Enrolled", statusCounts.enrolled, "default"],
             ["Suggested", statusCounts.suggested, "success"],
@@ -245,10 +245,13 @@ export function StudentClassesPanel({
           ].map(([label, value, variant]) => (
             <div
               key={String(label)}
-              className="rounded-2xl border border-border bg-card/70 p-3 shadow-sm"
+              className="min-w-0 rounded-2xl border border-border bg-card/70 p-2 text-center shadow-sm sm:p-3"
             >
-              <p className="text-xl font-semibold">{value}</p>
+              <p className="text-base font-semibold leading-5 sm:text-xl">
+                {value}
+              </p>
               <Badge
+                className="mt-1 max-w-full truncate px-2 text-[10px] sm:text-xs"
                 variant={
                   variant as "default" | "success" | "warning" | "secondary"
                 }

@@ -168,22 +168,22 @@ function TaskCard({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-border bg-background/65 p-3">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
+          <div className="min-w-0 rounded-2xl border border-border bg-background/65 p-2.5 sm:p-3">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <Clock3 className="size-4 text-primary" />
-              {timeLeftLabel(task.dueAt)}
+              <span className="truncate">{timeLeftLabel(task.dueAt)}</span>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 truncate text-xs text-muted-foreground">
               {formatDateTime(task.dueAt)}
             </p>
           </div>
-          <div className="rounded-2xl border border-border bg-background/65 p-3">
+          <div className="min-w-0 rounded-2xl border border-border bg-background/65 p-2.5 sm:p-3">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <CalendarClock className="size-4 text-primary" />
-              {meta.alert}
+              <span className="truncate">{meta.alert}</span>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 truncate text-xs text-muted-foreground">
               {task.status === "late" ? "Needs attention now" : "Upcoming"}
             </p>
           </div>

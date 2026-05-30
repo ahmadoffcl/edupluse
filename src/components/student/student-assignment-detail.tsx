@@ -121,7 +121,7 @@ export function StudentAssignmentDetail({
             {assignment.instructions ||
               "Review the requirements, attach your work, and submit before the deadline."}
           </p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-3 gap-2">
             {[
               ["Deadline", deadlineLabel(assignment.dueDate)],
               ["Points", `${assignment.points}`],
@@ -129,10 +129,14 @@ export function StudentAssignmentDetail({
             ].map(([label, value]) => (
               <div
                 key={label}
-                className="rounded-2xl border border-white/10 bg-white/10 p-3"
+                className="min-w-0 rounded-2xl border border-white/10 bg-white/10 p-2 text-center sm:p-3 sm:text-left"
               >
-                <p className="text-[11px] uppercase text-white/55">{label}</p>
-                <p className="mt-1 truncate text-sm font-semibold">{value}</p>
+                <p className="truncate text-[9px] uppercase text-white/55 sm:text-[11px]">
+                  {label}
+                </p>
+                <p className="mt-1 truncate text-xs font-semibold sm:text-sm">
+                  {value}
+                </p>
               </div>
             ))}
           </div>

@@ -25,16 +25,20 @@ export default async function StudentMessagesPage() {
         description="Real class messages, announcements, and direct conversations appear here as your workspace becomes active."
       />
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+      <div className="mb-5 grid grid-cols-3 gap-2 sm:gap-3">
         {stats.map(([label, value, Icon]) => (
-          <Card key={String(label)}>
-            <CardContent className="flex items-center justify-between gap-3 p-4">
-              <div>
-                <p className="text-sm text-muted-foreground">{label}</p>
-                <p className="mt-1 text-2xl font-semibold">{String(value)}</p>
+          <Card key={String(label)} className="overflow-hidden">
+            <CardContent className="p-2 text-center sm:flex sm:items-center sm:justify-between sm:gap-3 sm:p-4 sm:text-left">
+              <div className="min-w-0">
+                <p className="truncate text-[10px] text-muted-foreground sm:text-sm">
+                  {label}
+                </p>
+                <p className="mt-1 text-base font-semibold leading-5 sm:text-2xl">
+                  {String(value)}
+                </p>
               </div>
-              <span className="grid size-10 place-items-center rounded-2xl bg-primary/10 text-primary">
-                <Icon className="size-5" />
+              <span className="mx-auto mt-1 grid size-8 place-items-center rounded-2xl bg-primary/10 text-primary sm:mx-0 sm:mt-0 sm:size-10">
+                <Icon className="size-4 sm:size-5" />
               </span>
             </CardContent>
           </Card>

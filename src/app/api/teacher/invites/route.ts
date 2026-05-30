@@ -17,6 +17,7 @@ export const runtime = "nodejs";
 
 const schema = z.object({
   classId: z.string().uuid(),
+  role: z.enum(["student", "teacher"]).default("student"),
   expiresInDays: z.coerce.number().int().min(1).max(60).default(7),
   maxUses: z.coerce.number().int().min(1).max(200).default(30),
   emails: z.array(z.string().trim().email()).max(50).optional().default([]),
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
     .insert({
       org_id: context.session.orgId,
       email: null,
-      role: "student",
+      role: body.role,
       token_hash: hashInviteSecret(token),
       code_hash: hashInviteSecret(code),
       expires_at: expiresAt.toISOString(),
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
     action: "teacher.invite.created",
     entity: "invites",
     entityId: data.id,
-    metadata: { classId: body.classId, maxUses: body.maxUses },
+    metadata: { classId: body.classId, maxUses: body.maxUses, role: body.role },
   });
 
   const inviteUrl = `${new URL(request.url).origin}/invite/${token}`;
@@ -83,7 +84,10 @@ export async function POST(request: Request) {
           subject: `${context.session.displayName} invited you to ${classAccess?.name ?? "a class"}`,
           eyebrow: "Class invitation",
           title: "You have a class invite.",
-          body: `${context.session.displayName} invited you to join ${classAccess?.name ?? "an EduPulse class"}. Open the secure invite link, create your password, and the class will be added to your workspace.`,
+          body:
+            body.role === "teacher"
+              ? `${context.session.displayName} invited you to collaborate as a teacher in ${classAccess?.name ?? "an EduPulse class"}. Open the secure invite link and create your account.`
+              : `${context.session.displayName} invited you to join ${classAccess?.name ?? "an EduPulse class"}. Open the secure invite link, create your password, and the class will be added to your workspace.`,
           detailLabel: "Class",
           detailValue: classAccess?.name ?? "EduPulse class",
           actionLabel: "Join class",

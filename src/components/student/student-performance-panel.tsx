@@ -48,7 +48,7 @@ export function StudentPerformancePanel({
                   {data.performanceScore}
                 </p>
               </div>
-              <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                 <span>Attendance {data.attendancePercent}%</span>
                 <span>Submissions {data.submittedPercent}%</span>
                 <span>Score avg {data.averageScore}%</span>
@@ -56,18 +56,22 @@ export function StudentPerformancePanel({
               </div>
             </div>
             <Progress className="mt-5" value={data.performanceScore} />
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border border-border bg-muted/40 p-3">
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
+              <div className="rounded-2xl border border-border bg-muted/40 p-2.5 sm:p-3">
                 <p className="text-lg font-semibold sm:text-xl">
                   {data.missingCount}
                 </p>
-                <p className="text-sm text-muted-foreground">missing items</p>
+                <p className="text-xs text-muted-foreground sm:text-sm">
+                  missing items
+                </p>
               </div>
-              <div className="rounded-2xl border border-border bg-muted/40 p-3">
+              <div className="rounded-2xl border border-border bg-muted/40 p-2.5 sm:p-3">
                 <p className="text-lg font-semibold sm:text-xl">
                   {data.lateCount}
                 </p>
-                <p className="text-sm text-muted-foreground">late items</p>
+                <p className="text-xs text-muted-foreground sm:text-sm">
+                  late items
+                </p>
               </div>
             </div>
           </div>
