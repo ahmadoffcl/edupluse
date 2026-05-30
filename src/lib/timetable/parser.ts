@@ -1,4 +1,5 @@
-import { PDFParse } from "pdf-parse";
+import "server-only";
+import { extractPdfText } from "@/lib/server/pdf-text";
 import type {
   ParsedTimetableSlot,
   TimetableSection,
@@ -217,12 +218,10 @@ export type ParsedTimetable = {
 export async function parseTimetablePdf(
   data: Uint8Array,
 ): Promise<ParsedTimetable> {
-  const parser = new PDFParse({ data });
-  const result = await parser.getText({
+  const result = await extractPdfText(data, {
     cellSeparator: " ",
     pageJoiner: "",
   });
-  await parser.destroy();
 
   const sectionsByKey = new Map<string, TimetableSection>();
   const slots: ParsedTimetableSlot[] = [];

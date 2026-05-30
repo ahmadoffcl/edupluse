@@ -12,6 +12,7 @@ import {
   type IntegrityRiskBand,
   type SimilarityMatchResult,
 } from "@/lib/integrity/scoring";
+import { extractPdfText } from "@/lib/server/pdf-text";
 import type { WorkflowContext } from "@/lib/server/workflow-auth";
 
 type DbRecord = Record<string, unknown>;
@@ -87,14 +88,8 @@ async function textFromBuffer(buffer: Buffer, mimeType: string | null) {
   }
 
   if (mimeType === "application/pdf") {
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: buffer });
-    try {
-      const result = await parser.getText();
-      return result.text;
-    } finally {
-      await parser.destroy();
-    }
+    const result = await extractPdfText(buffer);
+    return result.text;
   }
 
   if (
