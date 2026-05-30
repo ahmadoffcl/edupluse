@@ -33,6 +33,7 @@ import {
 import { Input, Textarea } from "@/components/ui/input";
 import type { StudentClassRow } from "@/lib/dashboard/server-data";
 import type { Note } from "@/lib/types";
+import { signAndUploadFile } from "@/lib/uploads/client";
 import { cn, formatDate } from "@/lib/utils";
 
 const NOTES_PAGE_SIZE = 15;
@@ -65,6 +66,18 @@ function NoteForm({
     setBusy(true);
 
     try {
+      const file = form.get("file");
+      const classId = String(form.get("classId") ?? "") || null;
+      if (file instanceof File && file.size > 0) {
+        const uploadedFile = await signAndUploadFile({
+          purpose: "student_note",
+          file,
+          classId,
+        });
+        form.delete("file");
+        form.set("uploadedFile", JSON.stringify(uploadedFile));
+      }
+
       const response = await fetch(
         editing ? `/api/student/notes/${editing.id}` : "/api/student/notes",
         {

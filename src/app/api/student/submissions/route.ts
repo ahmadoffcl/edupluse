@@ -9,6 +9,10 @@ import {
   safeStorageName,
   validateTeacherUpload,
 } from "@/lib/server/upload-validation";
+import {
+  assertOrgStoragePath,
+  parseUploadedFileMetadata,
+} from "@/lib/server/uploaded-file";
 import { sendProfileNotificationEmails } from "@/lib/email/server";
 
 export const runtime = "nodejs";
@@ -34,6 +38,7 @@ export async function POST(request: Request) {
   const assignmentId = textValue(formData, "assignmentId");
   const content = textValue(formData, "content") || null;
   const file = formData.get("file");
+  const uploadedFile = parseUploadedFileMetadata(formData.get("uploadedFile"));
 
   if (!assignmentId) {
     return NextResponse.json(
@@ -42,7 +47,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!content && !(file instanceof File && file.size > 0)) {
+  if (!content && !(file instanceof File && file.size > 0) && !uploadedFile) {
     return NextResponse.json(
       { ok: false, error: "Add a file or a note before submitting." },
       { status: 400 },
@@ -94,7 +99,51 @@ export async function POST(request: Request) {
   }
 
   let filePath: string | null = null;
-  if (file instanceof File && file.size > 0) {
+  let submittedFile: {
+    path: string;
+    size: number;
+    mimeType: string;
+    name: string;
+  } | null = null;
+
+  if (uploadedFile) {
+    const valid =
+      assertOrgStoragePath({
+        metadata: uploadedFile,
+        orgId: context.session.orgId,
+        bucket: "submissions",
+        prefix: "submissions",
+      }) &&
+      uploadedFile.path.startsWith(
+        `${context.session.orgId}/submissions/${profileId}/${assignmentId}/`,
+      );
+    if (!valid) {
+      return NextResponse.json(
+        { ok: false, error: "Uploaded submission file is not valid." },
+        { status: 400 },
+      );
+    }
+
+    const validation = validateTeacherUpload({
+      name: uploadedFile.name,
+      type: uploadedFile.mimeType,
+      size: uploadedFile.size,
+    });
+    if (!validation.ok) {
+      return NextResponse.json(
+        { ok: false, error: validation.error },
+        { status: 400 },
+      );
+    }
+
+    filePath = uploadedFile.path;
+    submittedFile = {
+      path: uploadedFile.path,
+      size: uploadedFile.size,
+      mimeType: uploadedFile.mimeType,
+      name: uploadedFile.name,
+    };
+  } else if (file instanceof File && file.size > 0) {
     const validation = validateTeacherUpload(file);
     if (!validation.ok) {
       return NextResponse.json(
@@ -118,19 +167,24 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
+    submittedFile = {
+      path: filePath,
+      size: file.size,
+      mimeType: file.type,
+      name: file.name,
+    };
   }
 
   const dueAt = assignment.due_at ? new Date(assignment.due_at) : null;
   const status = dueAt && dueAt.getTime() < Date.now() ? "late" : "submitted";
   const submittedAt = new Date().toISOString();
-  const fileMetadata =
-    file instanceof File && file.size > 0
-      ? {
-          file_size: file.size,
-          mime_type: file.type,
-          original_filename: safeStorageName(file.name),
-        }
-      : {};
+  const fileMetadata = submittedFile
+    ? {
+        file_size: submittedFile.size,
+        mime_type: submittedFile.mimeType,
+        original_filename: safeStorageName(submittedFile.name),
+      }
+    : {};
   const { data, error } = await context.supabase
     .from("submissions")
     .upsert(

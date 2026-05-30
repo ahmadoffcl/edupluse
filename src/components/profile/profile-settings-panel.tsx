@@ -1,6 +1,7 @@
 "use client";
 
 import { type ChangeEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import { updateProfile } from "firebase/auth";
 import {
   Bell,
@@ -40,6 +41,7 @@ export function ProfileSettingsPanel({
   const [busy, setBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const { updateUserProfile } = useAuth();
+  const router = useRouter();
 
   function update<K extends keyof typeof form>(
     key: K,
@@ -61,6 +63,7 @@ export function ProfileSettingsPanel({
       });
       const payload = (await response.json().catch(() => null)) as {
         error?: string;
+        profile?: Partial<typeof form>;
       } | null;
 
       if (!response.ok) {
@@ -68,15 +71,19 @@ export function ProfileSettingsPanel({
       }
 
       toast.success("Profile settings saved");
+      if (payload?.profile) {
+        setForm((current) => ({ ...current, ...payload.profile }));
+      }
       updateUserProfile({
-        displayName: form.displayName,
-        photoURL: form.avatarUrl || null,
+        displayName: payload?.profile?.displayName ?? form.displayName,
+        photoURL: (payload?.profile?.avatarUrl ?? form.avatarUrl) || null,
       });
+      router.refresh();
       const auth = getFirebaseAuth();
       if (auth?.currentUser) {
         void updateProfile(auth.currentUser, {
-          displayName: form.displayName,
-          photoURL: form.avatarUrl || null,
+          displayName: payload?.profile?.displayName ?? form.displayName,
+          photoURL: (payload?.profile?.avatarUrl ?? form.avatarUrl) || null,
         }).catch(() => undefined);
       }
     } catch (error) {
@@ -112,6 +119,7 @@ export function ProfileSettingsPanel({
 
       update("avatarUrl", payload.avatarUrl);
       updateUserProfile({ photoURL: payload.avatarUrl });
+      router.refresh();
       const auth = getFirebaseAuth();
       if (auth?.currentUser) {
         void updateProfile(auth.currentUser, {

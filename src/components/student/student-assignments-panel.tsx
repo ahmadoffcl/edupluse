@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
 import type { Assignment, AssignmentStatus } from "@/lib/types";
+import { signAndUploadFile } from "@/lib/uploads/client";
 import { cn, formatDate } from "@/lib/utils";
 
 const ASSIGNMENT_PAGE_SIZE = 12;
@@ -312,6 +313,32 @@ export function StudentAssignmentSubmissionForm({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [fileName, setFileName] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const previewUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  function updateSelectedFile(file: File | null) {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+
+    const nextUrl = file ? URL.createObjectURL(file) : null;
+    previewUrlRef.current = nextUrl;
+    setSelectedFile(file);
+    setPreviewUrl(nextUrl);
+    setFileName(file?.name ?? "");
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -320,6 +347,17 @@ export function StudentAssignmentSubmissionForm({
     setBusy(true);
 
     try {
+      if (selectedFile) {
+        const uploadedFile = await signAndUploadFile({
+          purpose: "student_submission",
+          file: selectedFile,
+          classId: assignment.classId,
+          assignmentId: assignment.id,
+        });
+        form.delete("file");
+        form.set("uploadedFile", JSON.stringify(uploadedFile));
+      }
+
       const response = await fetch("/api/student/submissions", {
         method: "POST",
         body: form,
@@ -335,6 +373,8 @@ export function StudentAssignmentSubmissionForm({
 
       toast.success("Assignment submitted.");
       event.currentTarget.reset();
+      updateSelectedFile(null);
+      setFileInputKey((key) => key + 1);
       router.refresh();
     } catch (error) {
       toast.error("Submission failed", {
@@ -360,12 +400,14 @@ export function StudentAssignmentSubmissionForm({
       <label className="group block cursor-pointer rounded-[1.5rem] border border-dashed border-primary/35 bg-primary/5 p-4 transition hover:-translate-y-0.5 hover:bg-primary/10">
         <Input
           name="file"
+          key={fileInputKey}
           type="file"
           accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.png,.jpg,.jpeg,.webp,.gif,.mp3,.wav,.webm,.mp4,.mov"
           className="sr-only"
-          onChange={(event) =>
-            setFileName(event.currentTarget.files?.[0]?.name ?? "")
-          }
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0] ?? null;
+            updateSelectedFile(file);
+          }}
         />
         <span className="flex items-center gap-3">
           <span className="grid size-12 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
@@ -385,6 +427,42 @@ export function StudentAssignmentSubmissionForm({
           </span>
         </span>
       </label>
+
+      {selectedFile && previewUrl ? (
+        <div className="rounded-[1.25rem] border border-border bg-background/70 p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">
+                Ready to submit: {selectedFile.name}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Preview the selected file before sending it to your teacher.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <FilePreviewButton
+                file={{
+                  name: selectedFile.name,
+                  mimeType: selectedFile.type,
+                  signedUrl: previewUrl,
+                  downloadName: selectedFile.name,
+                  source: "submission",
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  updateSelectedFile(null);
+                  setFileInputKey((key) => key + 1);
+                }}
+              >
+                Remove
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-muted-foreground">

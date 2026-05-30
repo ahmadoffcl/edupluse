@@ -52,6 +52,7 @@ import type {
   TeacherSubmissionRow,
   TeacherWorkflowData,
 } from "@/lib/dashboard/teacher-workflow";
+import { signAndUploadFile } from "@/lib/uploads/client";
 import { formatDate } from "@/lib/utils";
 
 const selectClass =
@@ -397,6 +398,18 @@ export function ResourceUploadPanel({ data }: { data: TeacherWorkflowData }) {
     setBusy(true);
 
     try {
+      const file = form.get("file");
+      const targetClassId = String(form.get("classId") ?? "") || null;
+      if (file instanceof File && file.size > 0) {
+        const uploadedFile = await signAndUploadFile({
+          purpose: "teacher_resource",
+          file,
+          classId: targetClassId,
+        });
+        form.delete("file");
+        form.set("uploadedFile", JSON.stringify(uploadedFile));
+      }
+
       await mutate(
         () => fetch("/api/teacher/resources", { method: "POST", body: form }),
         {

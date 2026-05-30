@@ -24,6 +24,7 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { useAuth } from "@/components/providers/auth-provider";
 import { roleNav } from "@/lib/mock-data";
 import { canAccessPath, homeForRole } from "@/lib/permissions";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn, initials } from "@/lib/utils";
 
 type NotificationItem = {
@@ -98,6 +99,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const routePendingTimerRef = useRef<number | null>(null);
   const mobileDrawerTouchStartRef = useRef<number | null>(null);
   const classReminderTimersRef = useRef<number[]>([]);
+  const realtimeRefreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setRoutePending(false), 80);
@@ -271,6 +273,69 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       window.clearInterval(interval);
     };
   }, [router, user]);
+
+  useEffect(() => {
+    if (!user?.orgId) return undefined;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return undefined;
+
+    let cancelled = false;
+    const refresh = () => {
+      if (realtimeRefreshTimerRef.current) {
+        window.clearTimeout(realtimeRefreshTimerRef.current);
+      }
+
+      realtimeRefreshTimerRef.current = window.setTimeout(async () => {
+        if (cancelled) return;
+        router.refresh();
+        try {
+          const response = await fetch("/api/notifications", {
+            cache: "no-store",
+          });
+          const payload = (await response.json().catch(() => null)) as {
+            notifications?: NotificationItem[];
+          } | null;
+          if (!cancelled) setNotifications(payload?.notifications ?? []);
+        } catch {
+          // Polling remains the fallback if realtime refresh cannot load.
+        }
+      }, 450);
+    };
+
+    const channel = supabase.channel(`edupulse-live-${user.orgId}-${user.uid}`);
+    for (const table of [
+      "notifications",
+      "assignments",
+      "submissions",
+      "resources",
+      "announcements",
+      "messages",
+      "calendar_events",
+      "class_join_requests",
+      "enrollments",
+    ]) {
+      channel.on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table,
+          filter: `org_id=eq.${user.orgId}`,
+        },
+        refresh,
+      );
+    }
+    channel.subscribe();
+
+    return () => {
+      cancelled = true;
+      if (realtimeRefreshTimerRef.current) {
+        window.clearTimeout(realtimeRefreshTimerRef.current);
+        realtimeRefreshTimerRef.current = null;
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [router, user?.orgId, user?.uid]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -463,11 +528,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           applicationServerKey: urlBase64ToUint8Array(vapidKey),
         }));
 
-      await fetch("/api/notifications/push-subscriptions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(subscription),
-      });
+      const saveResponse = await fetch(
+        "/api/notifications/push-subscriptions",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(subscription),
+        },
+      );
+      if (!saveResponse.ok) {
+        const payload = (await saveResponse.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(payload?.error ?? "Unable to save device alerts.");
+      }
       registration.update().catch(() => undefined);
       setPushStatus("ready");
     } catch {
@@ -510,6 +584,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const unreadCount = notifications.filter((item) => !item.readAt).length;
+  function navBadgeCount(href: string) {
+    const unread = notifications.filter((item) => !item.readAt);
+    const matches = (kinds: string[]) =>
+      unread.filter((item) => kinds.includes(item.kind)).length;
+
+    if (href.includes("/upcoming")) {
+      return matches([
+        "assignment_reminder",
+        "exam",
+        "exam_reminder",
+        "class_start_reminder",
+        "class_end_reminder",
+      ]);
+    }
+    if (href.includes("/assignments")) {
+      return matches(["assignment", "assignment_reminder", "submission"]);
+    }
+    if (href.includes("/messages")) {
+      return matches(["message", "announcement"]);
+    }
+    if (href.includes("/requests")) {
+      return matches(["class_join_request", "invite", "teacher_invite"]);
+    }
+    return 0;
+  }
   const currentRole = user?.role ?? "student";
   const mobilePriority = useMemo(() => {
     const byTitle = new Map(nav.map((item) => [item.title, item]));
@@ -527,7 +626,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [currentRole, nav]);
 
   useEffect(() => {
-    if (!user || notificationPermission !== "granted" || pushStatus !== "idle") {
+    if (
+      !user ||
+      notificationPermission !== "granted" ||
+      pushStatus !== "idle"
+    ) {
       return;
     }
 
@@ -701,6 +804,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             const active =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
+            const badgeCount = navBadgeCount(item.href);
             return (
               <Link
                 key={item.href}
@@ -710,7 +814,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   navigateTo(item.href);
                 }}
                 className={cn(
-                  "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-muted-foreground motion-safe hover:bg-muted hover:text-foreground dark:hover:bg-white/10",
+                  "relative flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-muted-foreground motion-safe hover:bg-muted hover:text-foreground dark:hover:bg-white/10",
                   sidebarCollapsed && "lg:justify-center lg:px-0",
                   active &&
                     "bg-primary/12 text-primary ring-1 ring-primary/15 dark:bg-white dark:text-black dark:ring-white/20",
@@ -721,6 +825,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span className={cn(sidebarCollapsed && "lg:hidden")}>
                   {item.title}
                 </span>
+                {badgeCount > 0 ? (
+                  <span
+                    className={cn(
+                      "ml-auto grid size-5 place-items-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground",
+                      sidebarCollapsed && "lg:absolute lg:-right-1 lg:-top-1",
+                    )}
+                  >
+                    {Math.min(badgeCount, 9)}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
@@ -1154,6 +1268,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
+          const badgeCount = navBadgeCount(item.href);
           return (
             <Link
               key={item.href}
@@ -1164,12 +1279,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 navigateTo(item.href);
               }}
               className={cn(
-                "grid size-12 place-items-center rounded-full text-muted-foreground motion-safe hover:bg-muted hover:text-foreground dark:hover:bg-white/10",
+                "relative grid size-12 place-items-center rounded-full text-muted-foreground motion-safe hover:bg-muted hover:text-foreground dark:hover:bg-white/10",
                 active &&
                   "bg-primary text-primary-foreground dark:bg-white dark:text-black",
               )}
             >
               <Icon className="size-5" />
+              {badgeCount > 0 ? (
+                <span className="absolute right-0 top-0 grid size-4 place-items-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                  {Math.min(badgeCount, 9)}
+                </span>
+              ) : null}
             </Link>
           );
         })}

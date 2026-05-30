@@ -10,6 +10,10 @@ import {
   safeStorageName,
   validateTeacherUpload,
 } from "@/lib/server/upload-validation";
+import {
+  assertOrgStoragePath,
+  parseUploadedFileMetadata,
+} from "@/lib/server/uploaded-file";
 
 export const runtime = "nodejs";
 
@@ -66,6 +70,7 @@ export async function POST(request: Request) {
   const classId = textValue(formData, "classId") || null;
   const externalUrl = textValue(formData, "externalUrl") || null;
   const file = formData.get("file");
+  const uploadedFile = parseUploadedFileMetadata(formData.get("uploadedFile"));
 
   if (!title) {
     return NextResponse.json(
@@ -87,7 +92,42 @@ export async function POST(request: Request) {
   let originalFilename: string | null = null;
   let resourceType = externalUrl ? "link" : "rich_note";
 
-  if (file instanceof File && file.size > 0) {
+  if (uploadedFile) {
+    const valid =
+      assertOrgStoragePath({
+        metadata: uploadedFile,
+        orgId: context.session.orgId,
+        bucket: "resources",
+        prefix: "student-notes",
+      }) &&
+      uploadedFile.path.startsWith(
+        `${context.session.orgId}/student-notes/${context.profileId}/`,
+      );
+    if (!valid) {
+      return NextResponse.json(
+        { ok: false, error: "Uploaded note file is not valid." },
+        { status: 400 },
+      );
+    }
+
+    const validation = validateTeacherUpload({
+      name: uploadedFile.name,
+      type: uploadedFile.mimeType,
+      size: uploadedFile.size,
+    });
+    if (!validation.ok) {
+      return NextResponse.json(
+        { ok: false, error: validation.error },
+        { status: 400 },
+      );
+    }
+
+    filePath = uploadedFile.path;
+    fileSize = uploadedFile.size;
+    mimeType = uploadedFile.mimeType;
+    originalFilename = uploadedFile.name;
+    resourceType = resourceTypeFromMime(uploadedFile.mimeType);
+  } else if (file instanceof File && file.size > 0) {
     const validation = validateTeacherUpload(file);
     if (!validation.ok) {
       return NextResponse.json(

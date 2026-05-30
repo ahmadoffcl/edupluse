@@ -56,7 +56,11 @@ export function fileExtension(name: string) {
   return name.split(".").pop()?.toLowerCase() ?? "";
 }
 
-export function validateTeacherUpload(file: File) {
+export function validateTeacherUpload(file: {
+  name: string;
+  type: string;
+  size: number;
+}) {
   const extension = fileExtension(file.name);
 
   if (!extension || blockedExtensions.has(extension)) {

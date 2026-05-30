@@ -24,6 +24,7 @@ import {
   Send,
   Sparkles,
   Trash2,
+  UploadCloud,
   UserMinus,
   UsersRound,
   X,
@@ -50,6 +51,7 @@ import type {
   TeacherClassOption,
   TeacherWorkflowData,
 } from "@/lib/dashboard/teacher-workflow";
+import { signAndUploadFile } from "@/lib/uploads/client";
 import { cn, formatDate, initials } from "@/lib/utils";
 
 type ClassFormState = {
@@ -1169,6 +1171,38 @@ export function TeacherClassroomDetail({
     }
   }
 
+  async function analyzeAnnouncement(announcementId: string) {
+    const busyId = `announcement:${announcementId}:analyze`;
+    setBusy(busyId);
+    try {
+      const response = await fetch(
+        `/api/teacher/announcements/${announcementId}/analyze`,
+        { method: "POST" },
+      );
+      const result = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        created?: boolean;
+        message?: string;
+        error?: string;
+      } | null;
+
+      if (!response.ok || result?.ok === false) {
+        throw new Error(result?.error ?? "Unable to analyze post.");
+      }
+
+      toast.success(result?.message ?? "Post analyzed.", {
+        description: result?.created
+          ? "Students now have a matching upcoming task and notification."
+          : "No dated quiz or exam task was found in this post.",
+      });
+      router.refresh();
+    } catch (error) {
+      showFormError("Post analysis failed", error);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function submitAssignment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1182,6 +1216,24 @@ export function TeacherClassroomDetail({
     form.set("publish", "true");
     setBusy("assignment");
     try {
+      const files = form
+        .getAll("files")
+        .filter((file): file is File => file instanceof File && file.size > 0);
+      if (files.length > 0) {
+        const uploadedFiles = [];
+        for (const file of files) {
+          uploadedFiles.push(
+            await signAndUploadFile({
+              purpose: "assignment_attachment",
+              file,
+              classId: classRecord.id,
+            }),
+          );
+        }
+        form.delete("files");
+        form.set("uploadedFiles", JSON.stringify(uploadedFiles));
+      }
+
       await parseResponse(
         await fetch("/api/teacher/assignments", {
           method: "POST",
@@ -1205,6 +1257,17 @@ export function TeacherClassroomDetail({
     form.set("classId", classRecord.id);
     setBusy("resource");
     try {
+      const file = form.get("file");
+      if (file instanceof File && file.size > 0) {
+        const uploadedFile = await signAndUploadFile({
+          purpose: "teacher_resource",
+          file,
+          classId: classRecord.id,
+        });
+        form.delete("file");
+        form.set("uploadedFile", JSON.stringify(uploadedFile));
+      }
+
       await parseResponse(
         await fetch("/api/teacher/resources", {
           method: "POST",
@@ -1217,6 +1280,37 @@ export function TeacherClassroomDetail({
       router.refresh();
     } catch (error) {
       showFormError("Material failed", error);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function replaceResource(resourceId: string, file: File | null) {
+    if (!file) return;
+
+    const busyId = `resource:${resourceId}:replace`;
+    setBusy(busyId);
+    try {
+      const uploadedFile = await signAndUploadFile({
+        purpose: "teacher_resource",
+        file,
+        classId: classRecord.id,
+      });
+      const form = new FormData();
+      form.set("classId", classRecord.id);
+      form.set("uploadedFile", JSON.stringify(uploadedFile));
+
+      await parseResponse(
+        await fetch(`/api/teacher/resources/${resourceId}`, {
+          method: "PATCH",
+          body: form,
+        }),
+        "Unable to replace material file.",
+      );
+      toast.success("Material file replaced.");
+      router.refresh();
+    } catch (error) {
+      showFormError("Replace failed", error);
     } finally {
       setBusy(null);
     }
@@ -1400,6 +1494,21 @@ export function TeacherClassroomDetail({
                               </p>
                             </div>
                             <div className="flex shrink-0 gap-1">
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                disabled={
+                                  busy ===
+                                  `announcement:${announcement.id}:analyze`
+                                }
+                                onClick={() =>
+                                  void analyzeAnnouncement(announcement.id)
+                                }
+                                aria-label="Analyze post for upcoming tasks"
+                              >
+                                <Sparkles className="size-4" />
+                              </Button>
                               <Button
                                 type="button"
                                 size="icon"
@@ -1669,6 +1778,29 @@ export function TeacherClassroomDetail({
                               <>
                                 <FilePreviewButton file={file} />
                                 <FileDownloadButton file={file} />
+                                <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3 text-sm font-semibold transition hover:bg-muted">
+                                  <UploadCloud className="size-4" />
+                                  {busy === `resource:${resource.id}:replace`
+                                    ? "Replacing..."
+                                    : "Replace"}
+                                  <input
+                                    className="sr-only"
+                                    disabled={
+                                      busy === `resource:${resource.id}:replace`
+                                    }
+                                    type="file"
+                                    accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.png,.jpg,.jpeg,.webp,.gif,.mp3,.wav,.webm,.mp4,.mov"
+                                    onChange={(event) => {
+                                      const selected =
+                                        event.currentTarget.files?.[0] ?? null;
+                                      void replaceResource(
+                                        resource.id,
+                                        selected,
+                                      );
+                                      event.currentTarget.value = "";
+                                    }}
+                                  />
+                                </label>
                               </>
                             ) : resource.externalUrl ? (
                               <Button asChild size="sm" variant="outline">

@@ -7,6 +7,7 @@ import {
   writeAuditLog,
 } from "@/lib/server/workflow-auth";
 import { sendProfileNotificationEmails } from "@/lib/email/server";
+import { materializeAnnouncementLearningTask } from "@/lib/server/post-learning-analysis";
 
 export const runtime = "nodejs";
 
@@ -63,6 +64,8 @@ export async function POST(request: Request) {
       title: body.title,
       body: body.body,
       kind: "announcement",
+      action_url: "/student/messages",
+      metadata: { classId: body.classId },
     }));
 
     if (notifications.length) {
@@ -92,12 +95,23 @@ export async function POST(request: Request) {
     });
   }
 
+  const learningTask = await materializeAnnouncementLearningTask({
+    context,
+    announcementId: data.id,
+    classId: body.classId || null,
+    title: body.title,
+    body: body.body,
+  }).catch((error: unknown) => {
+    console.warn("Announcement learning task analysis skipped", error);
+    return null;
+  });
+
   await writeAuditLog(context, {
     action: "teacher.announcement.published",
     entity: "announcements",
     entityId: data.id,
-    metadata: { classId: body.classId || null },
+    metadata: { classId: body.classId || null, learningTask },
   });
 
-  return NextResponse.json({ ok: true, announcement: data });
+  return NextResponse.json({ ok: true, announcement: data, learningTask });
 }

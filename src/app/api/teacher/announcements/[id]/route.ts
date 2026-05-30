@@ -7,6 +7,7 @@ import {
   requireWorkflowContext,
   writeAuditLog,
 } from "@/lib/server/workflow-auth";
+import { materializeAnnouncementLearningTask } from "@/lib/server/post-learning-analysis";
 
 export const runtime = "nodejs";
 
@@ -45,7 +46,7 @@ export async function PATCH(
     })
     .eq("id", id)
     .eq("org_id", context.session.orgId)
-    .select("id,title,body")
+    .select("id,class_id,title,body")
     .single();
 
   if (error) {
@@ -55,14 +56,28 @@ export async function PATCH(
     );
   }
 
+  const learningTask = await materializeAnnouncementLearningTask({
+    context,
+    announcementId: id,
+    classId:
+      typeof data.class_id === "string"
+        ? data.class_id
+        : (body.classId ?? access.class_id),
+    title: typeof data.title === "string" ? data.title : (body.title ?? ""),
+    body: typeof data.body === "string" ? data.body : (body.body ?? ""),
+  }).catch((error: unknown) => {
+    console.warn("Announcement learning task analysis skipped", error);
+    return null;
+  });
+
   await writeAuditLog(context, {
     action: "teacher.announcement.updated",
     entity: "announcements",
     entityId: id,
-    metadata: { classId: body.classId ?? access.class_id },
+    metadata: { classId: body.classId ?? access.class_id, learningTask },
   });
 
-  return NextResponse.json({ ok: true, announcement: data });
+  return NextResponse.json({ ok: true, announcement: data, learningTask });
 }
 
 export async function DELETE(

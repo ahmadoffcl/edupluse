@@ -444,21 +444,61 @@ export async function dispatchDueTimetableNotifications({
 }: {
   supabase: SupabaseClient;
 }) {
-  const { data: notifications, error } = await supabase
+  const dispatchKinds = [
+    "class_start_reminder",
+    "class_end_reminder",
+    "assignment",
+    "assignment_reminder",
+    "exam",
+    "exam_reminder",
+    "announcement",
+    "message",
+    "submission",
+    "feedback",
+    "class_join_request",
+    "teacher_invite",
+  ];
+  const now = new Date().toISOString();
+  const recent = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+
+  const scheduledResult = await supabase
     .from("notifications")
     .select("id,org_id,recipient_id,title,body,kind,action_url,dedupe_key")
-    .in("kind", ["class_start_reminder", "class_end_reminder"])
-    .lte("scheduled_for", new Date().toISOString())
+    .in("kind", dispatchKinds)
+    .not("scheduled_for", "is", null)
+    .lte("scheduled_for", now)
     .is("delivered_at", null)
     .order("scheduled_for", { ascending: true })
     .limit(200);
 
+  const immediateResult = await supabase
+    .from("notifications")
+    .select("id,org_id,recipient_id,title,body,kind,action_url,dedupe_key")
+    .in("kind", dispatchKinds)
+    .is("scheduled_for", null)
+    .gte("created_at", recent)
+    .is("delivered_at", null)
+    .order("created_at", { ascending: true })
+    .limit(200);
+
+  const error = scheduledResult.error ?? immediateResult.error;
   if (error) return { delivered: 0, failed: 0, error: error.message };
+
+  const seen = new Set<string>();
+  const notifications = [
+    ...((scheduledResult.data ?? []) as DbRecord[]),
+    ...((immediateResult.data ?? []) as DbRecord[]),
+  ].filter((notification) => {
+    const id = stringValue(notification.id);
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 
   let delivered = 0;
   let failed = 0;
 
-  for (const notification of (notifications ?? []) as DbRecord[]) {
+  for (const notification of notifications) {
     const profileId = stringValue(notification.recipient_id);
     const notificationId = stringValue(notification.id);
     const orgId = stringValue(notification.org_id);
@@ -493,7 +533,7 @@ export async function dispatchDueTimetableNotifications({
         {
           title: stringValue(notification.title, "Class reminder"),
           body: stringValue(notification.body),
-          url: stringValue(notification.action_url, "/student/calendar"),
+          url: stringValue(notification.action_url, "/student"),
           tag: stringValue(notification.dedupe_key, notificationId),
           kind: stringValue(notification.kind),
         },

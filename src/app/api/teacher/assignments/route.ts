@@ -11,6 +11,10 @@ import {
   safeStorageName,
   validateTeacherUpload,
 } from "@/lib/server/upload-validation";
+import {
+  assertOrgStoragePath,
+  parseUploadedFileMetadataList,
+} from "@/lib/server/uploaded-file";
 import { sendProfileNotificationEmails } from "@/lib/email/server";
 import {
   assignmentKindLabel,
@@ -71,10 +75,20 @@ async function parsePayload(request: Request) {
     return {
       body: schema.parse(await request.json()),
       files: [] as File[],
+      uploadedFiles: [] as AssignmentAttachment[],
     };
   }
 
   const formData = await request.formData();
+  const uploadedFiles = parseUploadedFileMetadataList(
+    formData.get("uploadedFiles"),
+  ).map((file) => ({
+    path: file.path,
+    name: file.name,
+    size: file.size,
+    mimeType: file.mimeType,
+  }));
+
   return {
     body: schema.parse({
       classId: textValue(formData, "classId"),
@@ -88,6 +102,7 @@ async function parsePayload(request: Request) {
     files: formData
       .getAll("files")
       .filter((file): file is File => file instanceof File && file.size > 0),
+    uploadedFiles,
   };
 }
 
@@ -121,11 +136,45 @@ export async function POST(request: Request) {
     );
   }
 
-  const { body, files } = parsed;
+  const { body, files, uploadedFiles } = parsed;
   const classAccess = await requireClassAccess(context, body.classId);
   if (classAccess && isWorkflowResponse(classAccess)) return classAccess;
 
   const attachments: AssignmentAttachment[] = [];
+
+  for (const uploadedFile of uploadedFiles) {
+    const valid =
+      assertOrgStoragePath({
+        metadata: { ...uploadedFile, bucket: "resources" },
+        orgId: context.session.orgId,
+        bucket: "resources",
+        prefix: "assignments",
+      }) &&
+      uploadedFile.path.startsWith(
+        `${context.session.orgId}/assignments/${profileId}/`,
+      );
+    if (!valid) {
+      return NextResponse.json(
+        { ok: false, error: "Uploaded assignment file is not valid." },
+        { status: 400 },
+      );
+    }
+
+    const validation = validateTeacherUpload({
+      name: uploadedFile.name,
+      type: uploadedFile.mimeType,
+      size: uploadedFile.size,
+    });
+    if (!validation.ok) {
+      return NextResponse.json(
+        { ok: false, error: validation.error },
+        { status: 400 },
+      );
+    }
+
+    attachments.push(uploadedFile);
+  }
+
   for (const file of files) {
     const validation = validateTeacherUpload(file);
     if (!validation.ok) {
@@ -185,7 +234,7 @@ export async function POST(request: Request) {
     .select("id,title,status")
     .single();
 
-  if (assignmentResult.error) {
+  if (assignmentResult.error && attachments.length === 0) {
     const fallbackPayload = { ...assignmentPayload };
     delete (fallbackPayload as { attachments?: AssignmentAttachment[] })
       .attachments;
@@ -205,7 +254,13 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { ok: false, error: "Unable to create assignment." },
+      {
+        ok: false,
+        error:
+          attachments.length > 0
+            ? "Assignment file uploaded, but the assignment could not save the attachment metadata. Please refresh and try again."
+            : "Unable to create assignment.",
+      },
       { status: 500 },
     );
   }

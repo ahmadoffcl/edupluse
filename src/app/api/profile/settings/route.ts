@@ -141,10 +141,14 @@ export async function PATCH(request: Request) {
     updated_at: new Date().toISOString(),
   };
 
+  const selectColumns =
+    "display_name,username,phone,bio,avatar_url,profile_settings";
   let result = await supabase
     .from("profiles")
     .update(fullPayload)
-    .eq("id", profileId);
+    .eq("id", profileId)
+    .select(selectColumns)
+    .single();
 
   if (result.error && isMissingProfileColumn(result.error)) {
     result = await supabase
@@ -154,7 +158,9 @@ export async function PATCH(request: Request) {
         avatar_url: body.avatarUrl,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", profileId);
+      .eq("id", profileId)
+      .select("display_name,avatar_url")
+      .single();
   }
 
   if (result.error) {
@@ -164,5 +170,43 @@ export async function PATCH(request: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true });
+  const saved = (result.data ?? {}) as Record<string, unknown>;
+  const settings =
+    saved.profile_settings && typeof saved.profile_settings === "object"
+      ? (saved.profile_settings as Record<string, unknown>)
+      : {};
+
+  return NextResponse.json({
+    ok: true,
+    profile: {
+      displayName:
+        typeof saved.display_name === "string"
+          ? saved.display_name
+          : body.displayName,
+      username:
+        typeof saved.username === "string"
+          ? `@${saved.username}`
+          : body.username
+            ? `@${body.username}`
+            : "",
+      phone: typeof saved.phone === "string" ? saved.phone : (body.phone ?? ""),
+      bio: typeof saved.bio === "string" ? saved.bio : (body.bio ?? ""),
+      avatarUrl:
+        typeof saved.avatar_url === "string"
+          ? saved.avatar_url
+          : (body.avatarUrl ?? ""),
+      notifications:
+        typeof settings.notifications === "boolean"
+          ? settings.notifications
+          : body.notifications,
+      weeklyDigest:
+        typeof settings.weeklyDigest === "boolean"
+          ? settings.weeklyDigest
+          : body.weeklyDigest,
+      publicLeaderboard:
+        typeof settings.publicLeaderboard === "boolean"
+          ? settings.publicLeaderboard
+          : body.publicLeaderboard,
+    },
+  });
 }
