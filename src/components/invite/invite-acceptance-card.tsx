@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { ArrowRight, Clock, KeyRound, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { getPersistentFirebaseAuth } from "@/lib/firebase/client";
 import type { Role } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
@@ -170,6 +172,18 @@ export function InviteAcceptanceCard({ token }: { token: string }) {
 
       if (!response.ok || !result.ok || !result.role) {
         throw new Error(result.error ?? "Invite could not be accepted.");
+      }
+
+      const auth = await getPersistentFirebaseAuth();
+      if (auth) {
+        const currentEmail = auth.currentUser?.email?.toLowerCase();
+        const inviteEmail = form.email.toLowerCase();
+        if (auth.currentUser && currentEmail !== inviteEmail) {
+          await signOut(auth);
+        }
+        if (!auth.currentUser || currentEmail !== inviteEmail) {
+          await signInWithEmailAndPassword(auth, form.email, form.password);
+        }
       }
 
       window.localStorage.setItem("lumina.active.role", result.role);

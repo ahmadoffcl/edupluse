@@ -5,16 +5,28 @@ import {
   requireWorkflowContext,
   writeAuditLog,
 } from "@/lib/server/workflow-auth";
+import {
+  BUILTIN_TIMETABLE_IMPORT_ID,
+  builtInImportRow,
+  loadBuiltInTimetable,
+  mapBuiltInSlot,
+} from "@/lib/timetable/builtin";
+import { normalizeTimetableTime } from "@/lib/timetable/matching";
 import { materializeTimetableNotifications } from "@/lib/timetable/scheduler";
 
 export const runtime = "nodejs";
+
+const timeSchema = z
+  .string()
+  .regex(/^\d{1,2}:\d{2}$/)
+  .transform((value) => normalizeTimetableTime(value) ?? value);
 
 const slotSchema = z.object({
   id: z.string().uuid(),
   classId: z.string().uuid().nullable().optional(),
   dayOfWeek: z.number().int().min(1).max(7),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  startTime: timeSchema.nullable().optional(),
+  endTime: timeSchema.nullable().optional(),
   subjectName: z.string().trim().min(1).max(180),
   teacherName: z.string().trim().max(180).nullable().optional(),
   venue: z.string().trim().max(180).nullable().optional(),
@@ -27,6 +39,16 @@ const bodySchema = z.object({
 
 function stringValue(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
+}
+
+function isMissingTimetableTable(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+  return (
+    candidate.code === "42P01" ||
+    candidate.code === "PGRST205" ||
+    Boolean(candidate.message?.includes("timetable_"))
+  );
 }
 
 export async function POST(
@@ -45,12 +67,103 @@ export async function POST(
     );
   }
 
-  const { data: importRow, error: importError } = await context.supabase
-    .from("timetable_imports")
-    .select("id,status")
-    .eq("org_id", context.session.orgId)
-    .eq("id", id)
-    .maybeSingle();
+  let importRow: { id: string; status?: string | null } | null = null;
+  let importError: unknown = null;
+
+  if (id === BUILTIN_TIMETABLE_IMPORT_ID) {
+    const builtIn = await loadBuiltInTimetable();
+    if (!builtIn) {
+      return NextResponse.json(
+        { ok: false, error: "The built-in timetable is unavailable." },
+        { status: 500 },
+      );
+    }
+
+    const { data: classes } = await context.supabase
+      .from("classes")
+      .select("id,name,section,grade_level,batch,term")
+      .eq("org_id", context.session.orgId)
+      .limit(1000);
+
+    const { data: savedImport, error: saveImportError } = await context.supabase
+      .from("timetable_imports")
+      .upsert(
+        {
+          ...builtInImportRow(
+            builtIn,
+            context.session.orgId,
+            context.profileId,
+          ),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" },
+      )
+      .select("id,status")
+      .single();
+
+    if (saveImportError) {
+      const message = isMissingTimetableTable(saveImportError)
+        ? "Timetable storage is not ready yet. Run the latest Supabase migration first."
+        : "Unable to save the built-in timetable.";
+      return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    }
+
+    const updatesById = new Map(
+      parsed.data.slots.map((slot) => [slot.id, slot]),
+    );
+    const slotRows = builtIn.slots.map((slot) => {
+      const row = mapBuiltInSlot(
+        slot,
+        (classes ?? []) as Record<string, unknown>[],
+        {
+          orgId: context.session.orgId,
+        },
+      );
+      const update = updatesById.get(row.id);
+      const active = update?.active ?? row.active;
+      const classId = update?.classId ?? row.class_id ?? null;
+      const startTime =
+        update?.startTime ?? (stringValue(row.start_time) || null);
+      const endTime = update?.endTime ?? (stringValue(row.end_time) || null);
+      const ready = Boolean(active && classId && startTime && endTime);
+
+      return {
+        ...row,
+        class_id: classId,
+        day_of_week: update?.dayOfWeek ?? row.day_of_week,
+        start_time: startTime,
+        end_time: endTime,
+        subject_name: update?.subjectName ?? row.subject_name,
+        teacher_name: update?.teacherName || row.teacher_name,
+        venue: update?.venue || row.venue,
+        active: ready,
+        review_status: ready ? "ready" : "ignored",
+        updated_at: new Date().toISOString(),
+      };
+    });
+
+    const { error: saveSlotsError } = await context.supabase
+      .from("timetable_slots")
+      .upsert(slotRows, { onConflict: "id" });
+
+    if (saveSlotsError) {
+      return NextResponse.json(
+        { ok: false, error: "Unable to save the built-in timetable rows." },
+        { status: 500 },
+      );
+    }
+
+    importRow = savedImport;
+  } else {
+    const result = await context.supabase
+      .from("timetable_imports")
+      .select("id,status")
+      .eq("org_id", context.session.orgId)
+      .eq("id", id)
+      .maybeSingle();
+    importRow = result.data;
+    importError = result.error;
+  }
 
   if (importError || !importRow) {
     return NextResponse.json(

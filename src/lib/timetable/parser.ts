@@ -39,6 +39,11 @@ function parseEffectiveDate(value: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }
 
+function normalizeTime(value: string) {
+  const [hour, minute] = value.split(":");
+  return `${hour.padStart(2, "0")}:${minute}`;
+}
+
 function parseSection(line: string): TimetableSection | null {
   const match = SECTION_RE.exec(line);
   if (!match) return null;
@@ -64,8 +69,8 @@ function parseTimes(header: string): TimeRange[] {
   const ranges: TimeRange[] = [];
   for (const match of header.matchAll(TIME_RE)) {
     ranges.push({
-      start: match[1],
-      end: match[2],
+      start: normalizeTime(match[1]),
+      end: normalizeTime(match[2]),
     });
   }
   return ranges;
@@ -131,7 +136,11 @@ function extractTriples(lines: string[]) {
   return triples;
 }
 
-function parseDayBlock(lines: string[], section: TimetableSection, page: number) {
+function parseDayBlock(
+  lines: string[],
+  section: TimetableSection,
+  page: number,
+) {
   const header = lines[0] ?? "";
   const timeRanges = parseTimes(header);
   const slots: ParsedTimetableSlot[] = [];
@@ -205,7 +214,9 @@ export type ParsedTimetable = {
   pageCount: number;
 };
 
-export async function parseTimetablePdf(data: Uint8Array): Promise<ParsedTimetable> {
+export async function parseTimetablePdf(
+  data: Uint8Array,
+): Promise<ParsedTimetable> {
   const parser = new PDFParse({ data });
   const result = await parser.getText({
     cellSeparator: " ",
@@ -217,12 +228,12 @@ export async function parseTimetablePdf(data: Uint8Array): Promise<ParsedTimetab
   const slots: ParsedTimetableSlot[] = [];
 
   for (const page of result.pages) {
-    const lines = page.text
-      .split(/\r?\n/)
-      .map(cleanLine)
-      .filter(Boolean);
-    const sections = lines.map(parseSection).filter(Boolean) as TimetableSection[];
-    for (const section of sections) sectionsByKey.set(section.sectionKey, section);
+    const lines = page.text.split(/\r?\n/).map(cleanLine).filter(Boolean);
+    const sections = lines
+      .map(parseSection)
+      .filter(Boolean) as TimetableSection[];
+    for (const section of sections)
+      sectionsByKey.set(section.sectionKey, section);
 
     const blocks = pageDayBlocks(lines);
     blocks.forEach((block, index) => {

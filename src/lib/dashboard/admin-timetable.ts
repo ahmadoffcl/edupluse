@@ -2,6 +2,13 @@ import "server-only";
 import { getCurrentAppSession } from "@/lib/auth/server";
 import { isAdminRole } from "@/lib/server/workflow-auth";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
+import {
+  BUILTIN_TIMETABLE_FILENAME,
+  BUILTIN_TIMETABLE_IMPORT_ID,
+  loadBuiltInTimetable,
+  mapBuiltInSlot,
+} from "@/lib/timetable/builtin";
+import { TIMETABLE_TIMEZONE } from "@/lib/timetable/types";
 
 type DbRecord = Record<string, unknown>;
 
@@ -56,6 +63,106 @@ function asArray(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+function isMissingRelation(error: unknown, relation: string) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+  return (
+    candidate.code === "42P01" ||
+    candidate.code === "PGRST205" ||
+    Boolean(
+      candidate.message?.includes(relation) &&
+      (candidate.message.includes("schema cache") ||
+        candidate.message.includes("does not exist")),
+    )
+  );
+}
+
+async function loadClassRows(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServiceClient>>,
+  orgId: string,
+) {
+  let result = await supabase
+    .from("classes")
+    .select("id,name,section,grade_level,batch,term")
+    .eq("org_id", orgId)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+
+  if (result.error) {
+    result = await supabase
+      .from("classes")
+      .select("id,name,section,grade_level,batch,term")
+      .eq("org_id", orgId)
+      .limit(1000);
+  }
+
+  return (result.data ?? []) as DbRecord[];
+}
+
+function mapClassRows(rows: DbRecord[]) {
+  return rows.map((row) => {
+    const meta = [
+      row.grade_level,
+      row.batch,
+      row.term,
+      row.section && `Sec ${row.section}`,
+    ]
+      .map((value) => stringValue(value))
+      .filter(Boolean)
+      .join(" - ");
+
+    return {
+      id: stringValue(row.id),
+      name: stringValue(row.name, "Classroom"),
+      section: stringValue(row.section) || null,
+      meta,
+    };
+  });
+}
+
+async function builtInFallback(classes: DbRecord[]) {
+  const parsed = await loadBuiltInTimetable();
+  if (!parsed) return null;
+
+  const slots = parsed.slots.map((slot) => {
+    const row = mapBuiltInSlot(slot, classes, { requireStrongMatch: false });
+    return {
+      id: stringValue(row.id),
+      importId: BUILTIN_TIMETABLE_IMPORT_ID,
+      classId: stringValue(row.class_id) || null,
+      sectionKey: stringValue(row.section_key),
+      sectionLabel: stringValue(row.section_label),
+      dayOfWeek: numberValue(row.day_of_week, 1),
+      startTime: stringValue(row.start_time).slice(0, 5) || null,
+      endTime: stringValue(row.end_time).slice(0, 5) || null,
+      subjectName: stringValue(row.subject_name, "Class"),
+      teacherName: stringValue(row.teacher_name) || null,
+      venue: stringValue(row.venue) || null,
+      active: boolValue(row.active, true),
+      confidence: numberValue(row.confidence, 0.5),
+      reviewStatus: stringValue(row.review_status, "needs_review"),
+    };
+  });
+
+  return {
+    imports: [
+      {
+        id: BUILTIN_TIMETABLE_IMPORT_ID,
+        originalFilename: BUILTIN_TIMETABLE_FILENAME,
+        status: "draft",
+        timezone: TIMETABLE_TIMEZONE,
+        effectiveFrom:
+          parsed.sections.find((section) => section.effectiveFrom)
+            ?.effectiveFrom ?? null,
+        detectedSections: parsed.sections,
+        createdAt: new Date().toISOString(),
+        publishedAt: null,
+      },
+    ],
+    slots,
+  };
+}
+
 export async function getAdminTimetableData() {
   const session = await getCurrentAppSession();
   const supabase = getSupabaseServiceClient();
@@ -64,7 +171,7 @@ export async function getAdminTimetableData() {
     return { imports: [], slots: [], classes: [] };
   }
 
-  const [importsResult, classesResult] = await Promise.all([
+  const [importsResult, classRows] = await Promise.all([
     supabase
       .from("timetable_imports")
       .select(
@@ -73,13 +180,20 @@ export async function getAdminTimetableData() {
       .eq("org_id", session.orgId)
       .order("created_at", { ascending: false })
       .limit(20),
-    supabase
-      .from("classes")
-      .select("id,name,section,grade_level,batch,term")
-      .eq("org_id", session.orgId)
-      .order("created_at", { ascending: false })
-      .limit(1000),
+    loadClassRows(supabase, session.orgId),
   ]);
+
+  const classes = mapClassRows(classRows);
+
+  if (
+    importsResult.error &&
+    isMissingRelation(importsResult.error, "timetable_imports")
+  ) {
+    const fallback = await builtInFallback(classRows);
+    return fallback
+      ? { ...fallback, classes }
+      : { imports: [], slots: [], classes };
+  }
 
   const imports = ((importsResult.data ?? []) as DbRecord[]).map((row) => ({
     id: stringValue(row.id),
@@ -91,6 +205,13 @@ export async function getAdminTimetableData() {
     createdAt: stringValue(row.created_at),
     publishedAt: stringValue(row.published_at) || null,
   }));
+
+  if (imports.length === 0) {
+    const fallback = await builtInFallback(classRows);
+    return fallback
+      ? { ...fallback, classes }
+      : { imports: [], slots: [], classes };
+  }
 
   const activeImportId = imports[0]?.id;
   const slotsResult = activeImportId
@@ -106,6 +227,16 @@ export async function getAdminTimetableData() {
         .order("start_time", { ascending: true })
         .limit(1000)
     : { data: [], error: null };
+
+  if (
+    slotsResult.error &&
+    isMissingRelation(slotsResult.error, "timetable_slots")
+  ) {
+    const fallback = await builtInFallback(classRows);
+    return fallback
+      ? { ...fallback, classes }
+      : { imports, slots: [], classes };
+  }
 
   const slots = ((slotsResult.data ?? []) as DbRecord[]).map((row) => ({
     id: stringValue(row.id),
@@ -123,20 +254,6 @@ export async function getAdminTimetableData() {
     confidence: numberValue(row.confidence, 0.5),
     reviewStatus: stringValue(row.review_status, "needs_review"),
   }));
-
-  const classes = ((classesResult.data ?? []) as DbRecord[]).map((row) => {
-    const meta = [row.grade_level, row.batch, row.term, row.section && `Sec ${row.section}`]
-      .map((value) => stringValue(value))
-      .filter(Boolean)
-      .join(" - ");
-
-    return {
-      id: stringValue(row.id),
-      name: stringValue(row.name, "Classroom"),
-      section: stringValue(row.section) || null,
-      meta,
-    };
-  });
 
   return { imports, slots, classes };
 }

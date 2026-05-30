@@ -49,6 +49,87 @@ function relationRows(value: unknown) {
   return Array.isArray(value) ? (value as DbRecord[]) : [];
 }
 
+function isMissingColumn(error: unknown, column: string) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+  return (
+    candidate.code === "42703" ||
+    candidate.code === "PGRST204" ||
+    Boolean(
+      candidate.message?.includes(column) &&
+      (candidate.message.includes("schema cache") ||
+        candidate.message.includes("does not exist")),
+    )
+  );
+}
+
+async function loadClassRows(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServiceClient>>,
+  orgId: string,
+) {
+  const selects = [
+    "id,name,description,banner_url,section,grade_level,batch,term,delivery_mode,capacity,schedule_note,teacher_id,archived_at,created_at",
+    "id,name,description,banner_url,section,grade_level,batch,term,delivery_mode,capacity,teacher_id,archived_at,created_at",
+    "id,name,section,grade_level,batch,term,delivery_mode,teacher_id,archived_at,created_at",
+    "id,name,section,grade_level,batch,term,delivery_mode,teacher_id,created_at",
+    "id,name,section,grade_level,batch,term,teacher_id,created_at",
+  ];
+
+  for (const select of selects) {
+    const result = await supabase
+      .from("classes")
+      .select(select)
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(1000);
+
+    if (!result.error) return (result.data ?? []) as unknown as DbRecord[];
+
+    const canRetry =
+      isMissingColumn(result.error, "description") ||
+      isMissingColumn(result.error, "banner_url") ||
+      isMissingColumn(result.error, "capacity") ||
+      isMissingColumn(result.error, "schedule_note") ||
+      isMissingColumn(result.error, "archived_at") ||
+      isMissingColumn(result.error, "delivery_mode");
+
+    if (!canRetry) {
+      console.warn("Admin classes query failed", {
+        code: result.error.code,
+        message: result.error.message,
+      });
+      return [];
+    }
+  }
+
+  return [];
+}
+
+async function countByClass(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServiceClient>>,
+  table: string,
+  orgId: string,
+  classIds: string[],
+) {
+  if (classIds.length === 0) return new Map<string, number>();
+  const { data, error } = await supabase
+    .from(table)
+    .select("class_id")
+    .eq("org_id", orgId)
+    .in("class_id", classIds)
+    .limit(10000);
+
+  const counts = new Map<string, number>();
+  if (error) return counts;
+  for (const row of (data ?? []) as unknown as DbRecord[]) {
+    const classId = stringValue(row.class_id);
+    if (!classId) continue;
+    counts.set(classId, (counts.get(classId) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
 export async function getAdminClassesData(): Promise<{
   classes: AdminClassRow[];
   teachers: AdminTeacherOption[];
@@ -60,15 +141,8 @@ export async function getAdminClassesData(): Promise<{
     return { classes: [], teachers: [] };
   }
 
-  const [classesResult, teachersResult] = await Promise.all([
-    supabase
-      .from("classes")
-      .select(
-        "id,name,description,banner_url,section,grade_level,batch,term,delivery_mode,capacity,schedule_note,teacher_id,archived_at,profiles!classes_teacher_id_fkey(display_name),enrollments(id),assignments(id),resources(id)",
-      )
-      .eq("org_id", session.orgId)
-      .order("created_at", { ascending: false })
-      .limit(1000),
+  const [classRows, teachersResult] = await Promise.all([
+    loadClassRows(supabase, session.orgId),
     supabase
       .from("memberships")
       .select("profiles(id,display_name,email),role,status")
@@ -78,10 +152,42 @@ export async function getAdminClassesData(): Promise<{
       .limit(1000),
   ]);
 
-  const classes = ((classesResult.data ?? []) as DbRecord[]).map((row) => {
-    const teacher = relation(row.profiles);
+  const classIds = classRows.map((row) => stringValue(row.id)).filter(Boolean);
+  const teacherIds = Array.from(
+    new Set(
+      classRows.map((row) => stringValue(row.teacher_id)).filter(Boolean),
+    ),
+  );
+
+  const [
+    teacherProfilesResult,
+    studentCounts,
+    assignmentCounts,
+    materialCounts,
+  ] = await Promise.all([
+    teacherIds.length
+      ? supabase
+          .from("profiles")
+          .select("id,display_name")
+          .in("id", teacherIds)
+          .limit(1000)
+      : { data: [], error: null },
+    countByClass(supabase, "enrollments", session.orgId, classIds),
+    countByClass(supabase, "assignments", session.orgId, classIds),
+    countByClass(supabase, "resources", session.orgId, classIds),
+  ]);
+
+  const teachersById = new Map(
+    ((teacherProfilesResult.data ?? []) as DbRecord[]).map((row) => [
+      stringValue(row.id),
+      stringValue(row.display_name),
+    ]),
+  );
+
+  const classes = classRows.map((row) => {
+    const classId = stringValue(row.id);
     return {
-      id: stringValue(row.id),
+      id: classId,
       name: stringValue(row.name, "Classroom"),
       description: stringValue(row.description) || null,
       bannerUrl: stringValue(row.banner_url) || null,
@@ -93,11 +199,14 @@ export async function getAdminClassesData(): Promise<{
       capacity: numberOrNull(row.capacity),
       scheduleNote: stringValue(row.schedule_note) || null,
       teacherId: stringValue(row.teacher_id) || null,
-      teacherName: stringValue(teacher?.display_name) || null,
+      teacherName: teachersById.get(stringValue(row.teacher_id)) || null,
       archivedAt: stringValue(row.archived_at) || null,
-      studentCount: relationRows(row.enrollments).length,
-      assignmentCount: relationRows(row.assignments).length,
-      materialCount: relationRows(row.resources).length,
+      studentCount:
+        studentCounts.get(classId) ?? relationRows(row.enrollments).length,
+      assignmentCount:
+        assignmentCounts.get(classId) ?? relationRows(row.assignments).length,
+      materialCount:
+        materialCounts.get(classId) ?? relationRows(row.resources).length,
     };
   });
 

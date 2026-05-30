@@ -4,6 +4,11 @@ import {
   TIMETABLE_TIMEZONE,
   type TimetableSession,
 } from "@/lib/timetable/types";
+import {
+  loadBuiltInTimetable,
+  mapBuiltInSlot,
+  rowClassName,
+} from "@/lib/timetable/builtin";
 import { sendWebPushNotification } from "@/lib/timetable/push";
 
 type DbRecord = Record<string, unknown>;
@@ -102,7 +107,11 @@ function formatLocalTime(value: string, timezone = TIMETABLE_TIMEZONE) {
   }).format(date);
 }
 
-function notificationBody(slot: TimetableSlotRow, startsAt: string, endsAt: string) {
+function notificationBody(
+  slot: TimetableSlotRow,
+  startsAt: string,
+  endsAt: string,
+) {
   const time = `${formatLocalTime(startsAt, slot.timezone ?? TIMETABLE_TIMEZONE)}-${formatLocalTime(
     endsAt,
     slot.timezone ?? TIMETABLE_TIMEZONE,
@@ -163,6 +172,85 @@ function dedupeKey(slotId: string, startsAt: string, type: "start" | "end") {
   return `timetable:${slotId}:${startsAt}:${type}`;
 }
 
+async function loadClassRows(
+  supabase: SupabaseClient,
+  orgId?: string,
+  classIds?: string[],
+) {
+  let query = supabase
+    .from("classes")
+    .select("id,org_id,name,section,grade_level,batch,term")
+    .limit(5000);
+
+  if (orgId) query = query.eq("org_id", orgId);
+  if (classIds?.length) query = query.in("id", classIds);
+
+  const { data, error } = await query;
+  if (error) return [];
+  return (data ?? []) as DbRecord[];
+}
+
+function groupClassesByOrg(classes: DbRecord[]) {
+  const groups = new Map<string, DbRecord[]>();
+  for (const classRecord of classes) {
+    const orgId = stringValue(classRecord.org_id);
+    if (!orgId) continue;
+    const current = groups.get(orgId) ?? [];
+    current.push(classRecord);
+    groups.set(orgId, current);
+  }
+  return groups;
+}
+
+async function loadBuiltInSlotRows({
+  supabase,
+  orgId,
+  classIds,
+}: {
+  supabase: SupabaseClient;
+  orgId?: string;
+  classIds?: string[];
+}) {
+  const parsed = await loadBuiltInTimetable();
+  if (!parsed) return [];
+
+  const classes = await loadClassRows(supabase, orgId, classIds);
+  const allowedClassIds = classIds?.length ? new Set(classIds) : null;
+  const groups = groupClassesByOrg(classes);
+  const rows: TimetableSlotRow[] = [];
+
+  for (const [groupOrgId, groupClasses] of groups) {
+    for (const slot of parsed.slots) {
+      const row = mapBuiltInSlot(slot, groupClasses, {
+        orgId: groupOrgId,
+        requireStrongMatch: true,
+      });
+      const classId = stringValue(row.class_id);
+      if (!row.active || !classId) continue;
+      if (allowedClassIds && !allowedClassIds.has(classId)) continue;
+
+      rows.push({
+        id: stringValue(row.id),
+        org_id: groupOrgId,
+        class_id: classId,
+        section_label: stringValue(row.section_label),
+        day_of_week: Number(row.day_of_week) || 1,
+        start_time: stringValue(row.start_time) || null,
+        end_time: stringValue(row.end_time) || null,
+        subject_name: stringValue(row.subject_name, "Class"),
+        teacher_name: stringValue(row.teacher_name) || null,
+        venue: stringValue(row.venue) || null,
+        timezone: stringValue(row.timezone, TIMETABLE_TIMEZONE),
+        effective_from: stringValue(row.effective_from) || null,
+        effective_to: null,
+        classes: { name: rowClassName(classId, groupClasses) },
+      });
+    }
+  }
+
+  return rows;
+}
+
 export async function loadStudentTimetableSessions({
   supabase,
   orgId,
@@ -198,11 +286,18 @@ export async function loadStudentTimetableSessions({
     .in("class_id", classIds)
     .limit(1000);
 
-  if (slotError) return [];
+  let slotRows = (slots ?? []) as unknown as TimetableSlotRow[];
+  if (slotError || slotRows.length === 0) {
+    slotRows = await loadBuiltInSlotRows({
+      supabase,
+      orgId,
+      classIds,
+    });
+  }
 
   const now = new Date();
   const max = now.getTime() + days * 86_400_000;
-  return ((slots ?? []) as unknown as TimetableSlotRow[])
+  return slotRows
     .flatMap((slot) =>
       slotOccurrences(slot, now, days).map((occurrence) => ({
         id: `${slot.id}-${occurrence.startsAt}`,
@@ -227,8 +322,7 @@ export async function loadStudentTimetableSessions({
       return end >= now.getTime() - 30 * 60 * 1000 && end <= max;
     })
     .sort(
-      (a, b) =>
-        new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
     );
 }
 
@@ -255,9 +349,10 @@ export async function materializeTimetableNotifications({
 
   if (orgId) query = query.eq("org_id", orgId);
   const { data: slots, error: slotError } = await query;
-  if (slotError) return { inserted: 0, error: slotError.message };
-
-  const slotRows = (slots ?? []) as unknown as TimetableSlotRow[];
+  let slotRows = (slots ?? []) as unknown as TimetableSlotRow[];
+  if (slotError || slotRows.length === 0) {
+    slotRows = await loadBuiltInSlotRows({ supabase, orgId });
+  }
   const classIds = Array.from(new Set(slotRows.map((slot) => slot.class_id)));
   if (classIds.length === 0) return { inserted: 0, error: null };
 
@@ -308,7 +403,11 @@ export async function materializeTimetableNotifications({
             org_id: slot.org_id,
             recipient_id: recipientId,
             title: reminder.title,
-            body: notificationBody(slot, occurrence.startsAt, occurrence.endsAt),
+            body: notificationBody(
+              slot,
+              occurrence.startsAt,
+              occurrence.endsAt,
+            ),
             kind: reminder.kind,
             action_url: `/student/classes/${slot.class_id}`,
             scheduled_for: reminder.scheduledFor,
