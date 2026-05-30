@@ -78,6 +78,22 @@ function isMissingColumn(error: unknown, column: string) {
   );
 }
 
+function isMissingRelation(error: unknown, relation: string) {
+  if (!error || typeof error !== "object") return false;
+
+  const candidate = error as { code?: string; message?: string };
+
+  return (
+    candidate.code === "42P01" ||
+    candidate.code === "PGRST205" ||
+    Boolean(
+      candidate.message?.includes(relation) &&
+        (candidate.message.includes("schema cache") ||
+          candidate.message.includes("does not exist")),
+    )
+  );
+}
+
 export type TeacherClassOption = {
   id: string;
   name: string;
@@ -90,6 +106,9 @@ export type TeacherClassOption = {
   term: string | null;
   capacity: number | null;
   scheduleNote: string | null;
+  teacherId: string | null;
+  isPrimaryTeacher: boolean;
+  canApproveTeachers: boolean;
   createdAt: string;
 };
 
@@ -236,6 +255,23 @@ export type TeacherClassJoinRequestRow = {
   requestedAt: string;
 };
 
+export type TeacherClassTeacherRow = {
+  id: string;
+  classId: string;
+  className: string;
+  teacherId: string;
+  teacherName: string;
+  teacherUsername: string | null;
+  teacherEmail: string | null;
+  role: string;
+  status: "pending" | "active" | "rejected";
+  requestedAt: string | null;
+  joinedAt: string | null;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  isSelf: boolean;
+};
+
 export type TeacherProfileSettings = {
   displayName: string;
   email: string | null;
@@ -264,6 +300,8 @@ export type TeacherWorkflowData = {
   announcements: TeacherAnnouncementRow[];
   calendarEvents: TeacherCalendarEventRow[];
   joinRequests: TeacherClassJoinRequestRow[];
+  classTeachers: TeacherClassTeacherRow[];
+  pendingTeacherInvites: TeacherClassTeacherRow[];
   profile: TeacherProfileSettings | null;
   notes: Note[];
   assignments: Assignment[];
@@ -299,6 +337,8 @@ function emptyData(): TeacherWorkflowData {
     announcements: [],
     calendarEvents: [],
     joinRequests: [],
+    classTeachers: [],
+    pendingTeacherInvites: [],
     profile: null,
     notes: [],
     assignments: [],
@@ -353,21 +393,70 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
       : {};
 
   const canSeeAllClasses = currentSession.role !== "teacher";
-  async function loadClasses(select: string, activeOnly = true) {
-    const query = db
-      .from("classes")
-      .select(select)
-      .eq("org_id", currentSession.orgId);
+  let coTeacherClassIds: string[] = [];
+  if (currentSession.role === "teacher" && teacherProfileId) {
+    let coTeacherResult = await db
+      .from("class_teachers")
+      .select("class_id")
+      .eq("org_id", currentSession.orgId)
+      .eq("teacher_id", teacherProfileId)
+      .eq("status", "active")
+      .is("removed_at", null)
+      .limit(1000);
 
-    if (activeOnly) {
-      query.is("archived_at", null);
+    if (coTeacherResult.error && isMissingColumn(coTeacherResult.error, "status")) {
+      coTeacherResult = await db
+        .from("class_teachers")
+        .select("class_id")
+        .eq("org_id", currentSession.orgId)
+        .eq("teacher_id", teacherProfileId)
+        .is("removed_at", null)
+        .limit(1000);
     }
 
-    query.order("created_at", { ascending: false }).limit(100);
+    if (!coTeacherResult.error) {
+      coTeacherClassIds = ((coTeacherResult.data ?? []) as DbRecord[])
+        .map((row) => stringValue(row.class_id))
+        .filter(Boolean);
+    } else if (!isMissingRelation(coTeacherResult.error, "class_teachers")) {
+      coTeacherClassIds = [];
+    }
+  }
 
-    return currentSession.role === "teacher" && teacherProfileId
-      ? await query.eq("teacher_id", teacherProfileId)
-      : await query;
+  async function loadClasses(select: string, activeOnly = true) {
+    function baseQuery() {
+      const query = db
+        .from("classes")
+        .select(select)
+        .eq("org_id", currentSession.orgId);
+
+      if (activeOnly) {
+        query.is("archived_at", null);
+      }
+
+      return query.order("created_at", { ascending: false }).limit(100);
+    }
+
+    if (currentSession.role === "teacher" && teacherProfileId) {
+      const ownerResult = await baseQuery().eq("teacher_id", teacherProfileId);
+      if (ownerResult.error) return ownerResult;
+      if (coTeacherClassIds.length === 0) return ownerResult;
+
+      const coTeacherResult = await baseQuery().in("id", coTeacherClassIds);
+      if (coTeacherResult.error) return ownerResult;
+
+      const byId = new Map<string, DbRecord>();
+      for (const row of (ownerResult.data ?? []) as unknown as DbRecord[]) {
+        byId.set(stringValue(row.id), row);
+      }
+      for (const row of (coTeacherResult.data ?? []) as unknown as DbRecord[]) {
+        byId.set(stringValue(row.id), row);
+      }
+
+      return { data: Array.from(byId.values()), error: null };
+    }
+
+    return await baseQuery();
   }
 
   let classesResult = await loadClasses(
@@ -421,12 +510,173 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
       capacity:
         typeof row.capacity === "number" ? numberValue(row.capacity) : null,
       scheduleNote: stringValue(row.schedule_note) || null,
+      teacherId: stringValue(row.teacher_id) || null,
+      isPrimaryTeacher: stringValue(row.teacher_id) === teacherProfileId,
+      canApproveTeachers:
+        currentSession.role !== "teacher" ||
+        stringValue(row.teacher_id) === teacherProfileId,
       createdAt: stringValue(row.created_at),
     }),
   );
   const visibleClassIds = new Set(classes.map((item) => item.id));
   const classById = new Map(
     classes.map((classRecord) => [classRecord.id, classRecord]),
+  );
+
+  let rawClassTeacherRows: DbRecord[] = [];
+  let classTeachersData: unknown[] | null = null;
+  let classTeachersError: unknown = null;
+  const classTeachersWithStatusResult = await db
+    .from("class_teachers")
+    .select(
+      "id,class_id,teacher_id,role,status,requested_at,joined_at,approved_at,rejected_at,removed_at",
+    )
+    .eq("org_id", currentSession.orgId)
+    .is("removed_at", null)
+    .limit(1000);
+
+  if (
+    classTeachersWithStatusResult.error &&
+    isMissingColumn(classTeachersWithStatusResult.error, "status")
+  ) {
+    const fallbackClassTeachersResult = await db
+      .from("class_teachers")
+      .select("id,class_id,teacher_id,role,joined_at,removed_at")
+      .eq("org_id", currentSession.orgId)
+      .is("removed_at", null)
+      .limit(1000);
+    classTeachersData = fallbackClassTeachersResult.data;
+    classTeachersError = fallbackClassTeachersResult.error;
+  } else {
+    classTeachersData = classTeachersWithStatusResult.data;
+    classTeachersError = classTeachersWithStatusResult.error;
+  }
+
+  if (
+    !classTeachersError ||
+    isMissingRelation(classTeachersError, "class_teachers")
+  ) {
+    rawClassTeacherRows = ((classTeachersData ?? []) as DbRecord[]).filter(
+      (row) => {
+        const classId = stringValue(row.class_id);
+        const teacherId = stringValue(row.teacher_id);
+        return (
+          canSeeAllClasses ||
+          visibleClassIds.has(classId) ||
+          teacherId === teacherProfileId
+        );
+      },
+    );
+  }
+
+  const classTeacherProfileIds = Array.from(
+    new Set(
+      rawClassTeacherRows
+        .map((row) => stringValue(row.teacher_id))
+        .filter(Boolean),
+    ),
+  );
+  let classTeacherProfiles: DbRecord[] = [];
+  if (classTeacherProfileIds.length > 0) {
+    let profilesData: unknown[] | null = null;
+    let profilesError: unknown = null;
+    const profilesWithUsernameResult = await db
+      .from("profiles")
+      .select("id,display_name,email,username")
+      .in("id", classTeacherProfileIds)
+      .limit(1000);
+
+    if (
+      profilesWithUsernameResult.error &&
+      isMissingColumn(profilesWithUsernameResult.error, "username")
+    ) {
+      const fallbackProfilesResult = await db
+        .from("profiles")
+        .select("id,display_name,email")
+        .in("id", classTeacherProfileIds)
+        .limit(1000);
+      profilesData = fallbackProfilesResult.data;
+      profilesError = fallbackProfilesResult.error;
+    } else {
+      profilesData = profilesWithUsernameResult.data;
+      profilesError = profilesWithUsernameResult.error;
+    }
+
+    if (!profilesError) {
+      classTeacherProfiles = (profilesData ?? []) as DbRecord[];
+    }
+  }
+  const classTeacherProfileById = new Map(
+    classTeacherProfiles.map((profile) => [stringValue(profile.id), profile]),
+  );
+
+  const pendingSelfClassIds = rawClassTeacherRows
+    .filter(
+      (row) =>
+        stringValue(row.teacher_id) === teacherProfileId &&
+        stringValue(row.status, "active") === "pending" &&
+        !classById.has(stringValue(row.class_id)),
+    )
+    .map((row) => stringValue(row.class_id))
+    .filter(Boolean);
+  if (pendingSelfClassIds.length > 0) {
+    const { data: pendingClasses } = await db
+      .from("classes")
+      .select("id,name,section,teacher_id")
+      .eq("org_id", currentSession.orgId)
+      .in("id", Array.from(new Set(pendingSelfClassIds)))
+      .limit(1000);
+
+    for (const row of (pendingClasses ?? []) as DbRecord[]) {
+      classById.set(stringValue(row.id), {
+        id: stringValue(row.id),
+        name: stringValue(row.name, "Classroom"),
+        description: null,
+        bannerUrl: null,
+        section: stringValue(row.section) || null,
+        gradeLevel: null,
+        batch: null,
+        deliveryMode: "hybrid",
+        term: null,
+        capacity: null,
+        scheduleNote: null,
+        teacherId: stringValue(row.teacher_id) || null,
+        isPrimaryTeacher: false,
+        canApproveTeachers: false,
+        createdAt: "",
+      });
+    }
+  }
+
+  const classTeachers: TeacherClassTeacherRow[] = rawClassTeacherRows.map(
+    (row) => {
+      const teacherId = stringValue(row.teacher_id);
+      const profile = classTeacherProfileById.get(teacherId);
+      const status = stringValue(row.status, "active");
+      return {
+        id: stringValue(row.id),
+        classId: stringValue(row.class_id),
+        className:
+          classById.get(stringValue(row.class_id))?.name ?? "Classroom",
+        teacherId,
+        teacherName: stringValue(profile?.display_name, "Teacher"),
+        teacherUsername: stringValue(profile?.username) || null,
+        teacherEmail: stringValue(profile?.email) || null,
+        role: stringValue(row.role, "co_teacher"),
+        status:
+          status === "pending" || status === "rejected"
+            ? status
+            : "active",
+        requestedAt: stringValue(row.requested_at) || null,
+        joinedAt: stringValue(row.joined_at) || null,
+        approvedAt: stringValue(row.approved_at) || null,
+        rejectedAt: stringValue(row.rejected_at) || null,
+        isSelf: teacherId === teacherProfileId,
+      };
+    },
+  );
+  const pendingTeacherInvites = classTeachers.filter(
+    (teacher) => teacher.isSelf && teacher.status === "pending",
   );
 
   const availableStudentsResult = await db
@@ -1320,6 +1570,8 @@ export async function getTeacherWorkflowData(): Promise<TeacherWorkflowData> {
     announcements,
     calendarEvents,
     joinRequests,
+    classTeachers,
+    pendingTeacherInvites,
     profile: teacherProfileRecord
       ? {
           displayName: stringValue(teacherProfileRecord.display_name),

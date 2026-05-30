@@ -69,6 +69,70 @@ export function isWorkflowResponse(value: unknown): value is NextResponse {
   return value instanceof NextResponse;
 }
 
+function isMissingRelation(error: unknown, relation: string) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+
+  return (
+    candidate.code === "42P01" ||
+    candidate.code === "PGRST205" ||
+    Boolean(
+      candidate.message?.includes(relation) &&
+        (candidate.message.includes("schema cache") ||
+          candidate.message.includes("does not exist")),
+    )
+  );
+}
+
+function isMissingColumn(error: unknown, column: string) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+
+  return (
+    candidate.code === "42703" ||
+    candidate.code === "PGRST204" ||
+    Boolean(
+      candidate.message?.includes(column) &&
+        (candidate.message.includes("schema cache") ||
+          candidate.message.includes("does not exist")),
+    )
+  );
+}
+
+async function hasClassTeacherAccess(
+  context: WorkflowContext,
+  classId: string | null | undefined,
+) {
+  if (!classId || !context.profileId) return false;
+
+  const activeQuery = await context.supabase
+    .from("class_teachers")
+    .select("id")
+    .eq("org_id", context.session.orgId)
+    .eq("class_id", classId)
+    .eq("teacher_id", context.profileId)
+    .eq("status", "active")
+    .is("removed_at", null)
+    .maybeSingle();
+
+  if (!activeQuery.error) return Boolean(activeQuery.data);
+
+  const error = activeQuery.error;
+  if (error && isMissingRelation(error, "class_teachers")) return false;
+  if (!isMissingColumn(error, "status")) return false;
+
+  const fallbackQuery = await context.supabase
+    .from("class_teachers")
+    .select("id")
+    .eq("org_id", context.session.orgId)
+    .eq("class_id", classId)
+    .eq("teacher_id", context.profileId)
+    .is("removed_at", null)
+    .maybeSingle();
+
+  return Boolean(fallbackQuery.data);
+}
+
 export async function writeAuditLog(
   context: WorkflowContext,
   details: {
@@ -117,7 +181,8 @@ export async function requireClassAccess(
       role: context.session.role,
       profileId: context.profileId,
       ownerId: data.teacher_id,
-    })
+    }) &&
+    !(await hasClassTeacherAccess(context, data.id))
   ) {
     return jsonError("You do not have access to this class.", 403);
   }
@@ -144,7 +209,8 @@ export async function requireResourceAccess(
       role: context.session.role,
       profileId: context.profileId,
       ownerId: data.teacher_id,
-    })
+    }) &&
+    !(await hasClassTeacherAccess(context, data.class_id as string))
   ) {
     return jsonError("You do not have access to this resource.", 403);
   }
@@ -177,7 +243,8 @@ export async function requireAssignmentAccess(
       role: context.session.role,
       profileId: context.profileId,
       ownerId: data.teacher_id,
-    })
+    }) &&
+    !(await hasClassTeacherAccess(context, data.class_id as string))
   ) {
     return jsonError("You do not have access to this assignment.", 403);
   }
@@ -198,7 +265,7 @@ export async function requireSubmissionAccess(
   const { data, error } = await context.supabase
     .from("submissions")
     .select(
-      "id,student_id,assignment_id,assignments(id,title,teacher_id,points)",
+      "id,student_id,assignment_id,assignments(id,title,class_id,teacher_id,points)",
     )
     .eq("id", submissionId)
     .eq("org_id", context.session.orgId)
@@ -216,7 +283,11 @@ export async function requireSubmissionAccess(
       role: context.session.role,
       profileId: context.profileId,
       ownerId: assignment?.teacher_id,
-    })
+    }) &&
+    !(await hasClassTeacherAccess(
+      context,
+      (assignment as { class_id?: string } | undefined)?.class_id,
+    ))
   ) {
     return jsonError("You do not have access to this submission.", 403);
   }
@@ -229,6 +300,7 @@ export async function requireSubmissionAccess(
       | {
           id: string;
           title: string;
+          class_id: string;
           teacher_id: string;
           points: number;
         }

@@ -25,8 +25,8 @@ export function WelcomeIntro() {
         "edupulse-welcome-active",
         "edupulse-welcome-pending",
       );
-      setState("hidden");
-      return;
+      const frame = window.requestAnimationFrame(() => setState("hidden"));
+      return () => window.cancelAnimationFrame(frame);
     }
 
     const alreadySeen = window.sessionStorage.getItem(introStorageKey);
@@ -35,8 +35,8 @@ export function WelcomeIntro() {
         "edupulse-welcome-active",
         "edupulse-welcome-pending",
       );
-      setState("hidden");
-      return;
+      const frame = window.requestAnimationFrame(() => setState("hidden"));
+      return () => window.cancelAnimationFrame(frame);
     }
 
     root.classList.add("edupulse-welcome-active");

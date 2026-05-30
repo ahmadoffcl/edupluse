@@ -34,7 +34,46 @@ type NotificationItem = {
   readAt: string | null;
   createdAt: string;
   actionUrl?: string | null;
+  dedupeKey?: string | null;
 };
+
+type TimetableSessionItem = {
+  id: string;
+  slotId: string;
+  className: string;
+  subjectName: string;
+  teacherName: string | null;
+  venue: string | null;
+  startsAt: string;
+  endsAt: string;
+  startReminderAt: string;
+  endReminderAt: string;
+  actionUrl: string;
+  dedupeStartKey: string;
+  dedupeEndKey: string;
+};
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let index = 0; index < rawData.length; index += 1) {
+    outputArray[index] = rawData.charCodeAt(index);
+  }
+
+  return outputArray;
+}
+
+function classReminderBody(session: TimetableSessionItem) {
+  const time = new Intl.DateTimeFormat("en", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(session.startsAt));
+
+  return [session.venue, session.teacherName, time].filter(Boolean).join(" - ");
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -50,10 +89,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [notificationPermission, setNotificationPermission] = useState<
     NotificationPermission | "unsupported"
   >("unsupported");
+  const [classAlertPromptVisible, setClassAlertPromptVisible] = useState(false);
+  const [pushStatus, setPushStatus] = useState<
+    "idle" | "saving" | "ready" | "unavailable"
+  >("idle");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const notificationsLoadedRef = useRef(false);
   const routePendingTimerRef = useRef<number | null>(null);
   const mobileDrawerTouchStartRef = useRef<number | null>(null);
+  const classReminderTimersRef = useRef<number[]>([]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setRoutePending(false), 80);
@@ -186,24 +230,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
 
             for (const item of nextNotifications) {
+              const notificationKey = item.dedupeKey ?? item.id;
               if (
                 !notificationsLoadedRef.current ||
                 item.readAt ||
-                notifiedIds.has(item.id)
+                notifiedIds.has(notificationKey)
               ) {
-                notifiedIds.add(item.id);
+                notifiedIds.add(notificationKey);
                 continue;
               }
 
               const browserNotification = new window.Notification(item.title, {
                 body: item.body,
-                tag: item.id,
+                tag: notificationKey,
               });
               browserNotification.onclick = () => {
                 window.focus();
                 if (item.actionUrl) router.push(item.actionUrl);
               };
-              notifiedIds.add(item.id);
+              notifiedIds.add(notificationKey);
             }
 
             window.localStorage.setItem(
@@ -227,14 +272,207 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [router, user]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (!user || notificationPermission !== "default") {
+        setClassAlertPromptVisible(false);
+        return;
+      }
+
+      const prompted = window.localStorage.getItem(
+        "edupulse.classAlerts.prompted",
+      );
+      setClassAlertPromptVisible(prompted !== "true");
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [notificationPermission, user]);
+
+  useEffect(() => {
+    classReminderTimersRef.current.forEach((timer) =>
+      window.clearTimeout(timer),
+    );
+    classReminderTimersRef.current = [];
+
+    if (!user || user.role !== "student") return;
+
+    let cancelled = false;
+    const currentUser = user;
+
+    function notifyLocal({
+      key,
+      title,
+      body,
+      actionUrl,
+    }: {
+      key: string;
+      title: string;
+      body: string;
+      actionUrl: string;
+    }) {
+      if (
+        typeof window === "undefined" ||
+        !("Notification" in window) ||
+        window.Notification.permission !== "granted"
+      ) {
+        return;
+      }
+
+      const notifiedIds = new Set(
+        (window.localStorage.getItem("edupulse.notified.ids") ?? "")
+          .split(",")
+          .filter(Boolean),
+      );
+      if (notifiedIds.has(key)) return;
+
+      const browserNotification = new window.Notification(title, {
+        body,
+        tag: key,
+      });
+      browserNotification.onclick = () => {
+        window.focus();
+        router.push(actionUrl);
+      };
+      notifiedIds.add(key);
+      window.localStorage.setItem(
+        "edupulse.notified.ids",
+        Array.from(notifiedIds).slice(-240).join(","),
+      );
+    }
+
+    function scheduleSessions(sessions: TimetableSessionItem[]) {
+      const now = Date.now();
+      for (const session of sessions) {
+        const reminders = [
+          {
+            key: session.dedupeStartKey,
+            at: new Date(session.startReminderAt).getTime(),
+            title: `${session.subjectName} starts in 15 min`,
+            body: classReminderBody(session),
+          },
+          {
+            key: session.dedupeEndKey,
+            at: new Date(session.endReminderAt).getTime(),
+            title: `${session.subjectName} is ending now`,
+            body: classReminderBody(session),
+          },
+        ];
+
+        for (const reminder of reminders) {
+          const delay = reminder.at - now;
+          if (delay < -30 * 60 * 1000) continue;
+          if (delay <= 0) {
+            notifyLocal({
+              key: reminder.key,
+              title: reminder.title,
+              body: reminder.body,
+              actionUrl: session.actionUrl,
+            });
+            continue;
+          }
+          if (delay > 24 * 60 * 60 * 1000) continue;
+
+          const timer = window.setTimeout(() => {
+            notifyLocal({
+              key: reminder.key,
+              title: reminder.title,
+              body: reminder.body,
+              actionUrl: session.actionUrl,
+            });
+          }, delay);
+          classReminderTimersRef.current.push(timer);
+        }
+      }
+    }
+
+    async function loadTimetable() {
+      const cacheKey = `edupulse.timetable.${currentUser.uid}`;
+      try {
+        const response = await fetch("/api/student/timetable", {
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          sessions?: TimetableSessionItem[];
+        } | null;
+        const sessions = payload?.sessions ?? [];
+        if (cancelled) return;
+        window.localStorage.setItem(cacheKey, JSON.stringify(sessions));
+        scheduleSessions(sessions);
+      } catch {
+        const cached = window.localStorage.getItem(cacheKey);
+        if (!cached || cancelled) return;
+        try {
+          scheduleSessions(JSON.parse(cached) as TimetableSessionItem[]);
+        } catch {
+          window.localStorage.removeItem(cacheKey);
+        }
+      }
+    }
+
+    void loadTimetable();
+    const refresh = window.setInterval(loadTimetable, 30 * 60 * 1000);
+    window.addEventListener("online", loadTimetable);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(refresh);
+      window.removeEventListener("online", loadTimetable);
+      classReminderTimersRef.current.forEach((timer) =>
+        window.clearTimeout(timer),
+      );
+      classReminderTimersRef.current = [];
+    };
+  }, [router, user]);
+
   async function enableDeviceNotifications() {
     if (typeof window === "undefined" || !("Notification" in window)) {
       setNotificationPermission("unsupported");
+      setPushStatus("unavailable");
       return;
     }
 
     const permission = await window.Notification.requestPermission();
     setNotificationPermission(permission);
+    window.localStorage.setItem("edupulse.classAlerts.prompted", "true");
+    setClassAlertPromptVisible(false);
+
+    if (permission !== "granted") return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushStatus("unavailable");
+      return;
+    }
+
+    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!vapidKey) {
+      setPushStatus("unavailable");
+      return;
+    }
+
+    setPushStatus("saving");
+    try {
+      const registration = await navigator.serviceWorker.register("/sw.js", {
+        scope: "/",
+        updateViaCache: "none",
+      });
+      const readyRegistration = await navigator.serviceWorker.ready;
+      const existing = await readyRegistration.pushManager.getSubscription();
+      const subscription =
+        existing ??
+        (await readyRegistration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        }));
+
+      await fetch("/api/notifications/push-subscriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subscription),
+      });
+      registration.update().catch(() => undefined);
+      setPushStatus("ready");
+    } catch {
+      setPushStatus("unavailable");
+    }
   }
 
   function openSearchResult(href: string) {
@@ -287,6 +525,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .filter(Boolean)
       .slice(0, 4) as typeof nav;
   }, [currentRole, nav]);
+
+  useEffect(() => {
+    if (!user || notificationPermission !== "granted" || pushStatus !== "idle") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void enableDeviceNotifications();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [notificationPermission, pushStatus, user]);
 
   if (loading || !user) {
     return (
@@ -612,6 +862,47 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 );
               })
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {classAlertPromptVisible ? (
+        <div className="fixed inset-x-3 bottom-24 z-40 mx-auto max-w-md rounded-[1.5rem] border border-border bg-card/95 p-4 shadow-[var(--shadow-glass)] backdrop-blur-2xl lg:bottom-6 lg:right-6 lg:left-auto">
+          <div className="flex items-start gap-3">
+            <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-primary/12 text-primary">
+              <Bell className="size-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">Turn on class alerts</p>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                Get a short reminder before class starts and when it ends.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={enableDeviceNotifications}
+                  disabled={pushStatus === "saving"}
+                >
+                  <Bell />
+                  {pushStatus === "saving" ? "Saving..." : "Enable alerts"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    window.localStorage.setItem(
+                      "edupulse.classAlerts.prompted",
+                      "true",
+                    );
+                    setClassAlertPromptVisible(false);
+                  }}
+                >
+                  Later
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}

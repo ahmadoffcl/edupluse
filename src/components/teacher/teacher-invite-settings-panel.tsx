@@ -90,6 +90,10 @@ export function TeacherInviteSettingsPanel({
           <UsersRound className="size-5 text-primary" />
           Invite students or teachers
         </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Student links join the class directly. Teacher links create a
+          co-teacher request for the class owner to approve.
+        </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {data.classes.length === 0 ? (

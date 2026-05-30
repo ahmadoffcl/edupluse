@@ -31,6 +31,26 @@ function errorCode(error: unknown) {
     : undefined;
 }
 
+function isMissingRelation(error: unknown, relation: string) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+  return (
+    candidate.code === "42P01" ||
+    candidate.code === "PGRST205" ||
+    Boolean(candidate.message?.includes(relation))
+  );
+}
+
+function isMissingColumn(error: unknown, column: string) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+  return (
+    candidate.code === "42703" ||
+    candidate.code === "PGRST204" ||
+    Boolean(candidate.message?.includes(column))
+  );
+}
+
 export async function POST(request: Request) {
   const supabase = getSupabaseServiceClient();
   if (!supabase) {
@@ -53,7 +73,7 @@ export async function POST(request: Request) {
   const query = supabase
     .from("invites")
     .select(
-      "id,org_id,email,role,expires_at,accepted_at,revoked_at,class_id,max_uses,used_count,organizations(name)",
+      "id,org_id,email,role,expires_at,accepted_at,revoked_at,class_id,max_uses,used_count,created_by,organizations(name),classes(name,teacher_id)",
     );
   const { data: invite, error: inviteError } = body.token
     ? await query.eq("token_hash", hash).maybeSingle()
@@ -195,6 +215,72 @@ export async function POST(request: Request) {
     );
   }
 
+  let pendingTeacherApproval = false;
+  if (invite.class_id && invite.role === "teacher") {
+    const { error: classTeacherError } = await supabase.from("class_teachers").upsert(
+      {
+        org_id: invite.org_id,
+        class_id: invite.class_id,
+        teacher_id: profile.id,
+        role: "co_teacher",
+        status: "pending",
+        invited_by: invite.created_by ?? null,
+        requested_at: new Date().toISOString(),
+        approved_at: null,
+        approved_by: null,
+        rejected_at: null,
+        removed_at: null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "class_id,teacher_id" },
+    );
+
+    if (
+      classTeacherError &&
+      (isMissingRelation(classTeacherError, "class_teachers") ||
+        isMissingColumn(classTeacherError, "status"))
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Teacher approval is being prepared. Ask your class owner to try again after the workspace update.",
+        },
+        { status: 503 },
+      );
+    }
+
+    if (classTeacherError) {
+      return NextResponse.json(
+        { ok: false, error: "Unable to request teacher access." },
+        { status: 500 },
+      );
+    }
+
+    const classRelation = Array.isArray(invite.classes)
+      ? invite.classes[0]
+      : invite.classes;
+    const classRecord =
+      classRelation && typeof classRelation === "object"
+        ? (classRelation as { name?: string | null; teacher_id?: string | null })
+        : null;
+    const classOwnerId = classRecord?.teacher_id ?? null;
+    const className = classRecord?.name ?? "your class";
+    if (classOwnerId) {
+      await supabase.from("notifications").insert({
+        org_id: invite.org_id,
+        recipient_id: classOwnerId,
+        title: "Co-teacher waiting for approval",
+        body: `${body.displayName} accepted your invite and is waiting to join ${className}.`,
+        kind: "teacher_invite",
+        action_url: `/teacher/classes/${invite.class_id}?tab=people`,
+        metadata: { classId: invite.class_id, teacherId: profile.id },
+      });
+    }
+
+    pendingTeacherApproval = true;
+  }
+
   const usedCount = Number(invite.used_count ?? 0) + 1;
   await supabase
     .from("invites")
@@ -242,6 +328,7 @@ export async function POST(request: Request) {
     photoURL:
       typeof profile.avatar_url === "string" ? profile.avatar_url : null,
     onboardingCompleted: Boolean(profile.onboarding_completed_at),
+    pendingApproval: pendingTeacherApproval,
   });
   response.cookies.set(sessionCookieName, token, sessionCookieOptions());
 

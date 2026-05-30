@@ -11,6 +11,7 @@ import {
   Check,
   ChevronRight,
   ClipboardList,
+  Clock3,
   FileSearch,
   FileText,
   ImageIcon,
@@ -20,6 +21,7 @@ import {
   Search,
   Send,
   Sparkles,
+  UserMinus,
   UsersRound,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -890,6 +892,7 @@ export function TeacherClassroomHome({
   if (!hasClasses) {
     return (
       <div className="space-y-8">
+        <PendingTeacherApprovalNotice data={data} />
         <section className="space-y-3">
           <Badge variant="info">Teacher workspace</Badge>
           <h1 className="max-w-3xl text-3xl font-semibold tracking-tight md:text-5xl">
@@ -911,6 +914,7 @@ export function TeacherClassroomHome({
 
   return (
     <div className="space-y-5 sm:space-y-7">
+      <PendingTeacherApprovalNotice data={data} />
       <section className="overflow-hidden rounded-[2rem] border border-border bg-card/86 p-4 shadow-[var(--shadow-glass)] sm:p-6">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
           <div>
@@ -994,6 +998,50 @@ function showFormError(title: string, error: unknown) {
   toast.error(title, {
     description: error instanceof Error ? error.message : "Try again.",
   });
+}
+
+function PendingTeacherApprovalNotice({
+  data,
+}: {
+  data: TeacherWorkflowData;
+}) {
+  if (data.pendingTeacherInvites.length === 0) return null;
+
+  return (
+    <Card className="border-amber-400/25 bg-amber-500/8">
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="flex items-center gap-2 font-semibold">
+              <Clock3 className="size-4 text-amber-500" />
+              Waiting for class owner approval
+            </p>
+            <p className="text-sm text-muted-foreground">
+              You accepted a co-teacher invite. The class will appear here after
+              the owner approves your access.
+            </p>
+          </div>
+          <Badge variant="warning">
+            {data.pendingTeacherInvites.length} pending
+          </Badge>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {data.pendingTeacherInvites.map((invite) => (
+            <div
+              key={invite.id}
+              className="rounded-2xl border border-border bg-card/80 p-3"
+            >
+              <p className="font-semibold">{invite.className}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Requested{" "}
+                {invite.requestedAt ? formatDate(invite.requestedAt) : "today"}
+              </p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function TeacherClassroomDetail({
@@ -1120,13 +1168,49 @@ export function TeacherClassroomDetail({
     }
   }
 
+  async function leaveClass() {
+    const confirmed = window.confirm(
+      "Remove yourself from this class? You can be invited again later.",
+    );
+    if (!confirmed) return;
+
+    setBusy("leave-class");
+    try {
+      await parseResponse(
+        await fetch(`/api/teacher/classes/${classRecord.id}/teachers/self`, {
+          method: "DELETE",
+        }),
+        "Unable to remove you from this class.",
+      );
+      toast.success("You were removed from this class.");
+      router.push("/teacher");
+      router.refresh();
+    } catch (error) {
+      showFormError("Leave class failed", error);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="space-y-4 sm:space-y-6">
-      <Button asChild size="sm" variant="ghost" className="px-0">
-        <Link href="/teacher">
-          <ArrowLeft /> Back to classrooms
-        </Link>
-      </Button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button asChild size="sm" variant="ghost" className="px-0">
+          <Link href="/teacher">
+            <ArrowLeft /> Back to classrooms
+          </Link>
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={leaveClass}
+          disabled={busy === "leave-class"}
+        >
+          <UserMinus />
+          {busy === "leave-class" ? "Removing..." : "Leave class"}
+        </Button>
+      </div>
       <Banner classRecord={classRecord} />
 
       <div className="grid grid-cols-4 gap-2">

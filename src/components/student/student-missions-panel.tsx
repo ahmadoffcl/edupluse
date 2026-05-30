@@ -549,12 +549,17 @@ export function StudentMissionsPanel({
 
   useEffect(() => {
     if (data) {
-      setFocusData(data);
-      setLoading(false);
-      return;
+      const timer = window.setTimeout(() => {
+        setFocusData(data);
+        setLoading(false);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
 
-    void loadMissions();
+    const timer = window.setTimeout(() => {
+      void loadMissions();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [data, loadMissions]);
 
   const secondaryMissions = useMemo(

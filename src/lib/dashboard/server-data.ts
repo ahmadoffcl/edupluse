@@ -1,6 +1,7 @@
 import "server-only";
 import { getCurrentAppSession } from "@/lib/auth/server";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
+import { loadStudentTimetableSessions } from "@/lib/timetable/scheduler";
 import type {
   Activity,
   Assignment,
@@ -547,6 +548,16 @@ export async function getDashboardData(): Promise<DashboardData> {
     }),
   );
 
+  const timetableSessions =
+    isStudent && profileId
+      ? await loadStudentTimetableSessions({
+          supabase: db,
+          orgId: currentSession.orgId,
+          profileId,
+          days: 14,
+        })
+      : [];
+
   const submitted = assignmentRows.reduce((total, row) => {
     const submissions = asRows(row.submissions);
     return total + submissions.length;
@@ -824,9 +835,17 @@ export async function getDashboardData(): Promise<DashboardData> {
       return order[a.enrollmentStatus] - order[b.enrollmentStatus];
     });
 
-  const schedule: ScheduleItem[] = visibleEventRows.map((row) => {
+  const eventSchedule: ScheduleItem[] = visibleEventRows.map((row) => {
     const date = new Date(stringValue(row.starts_at, new Date().toISOString()));
     const classRecord = relation(row, "classes");
+    const kind: ScheduleItem["kind"] =
+      row.kind === "exam"
+        ? "exam"
+        : row.kind === "live"
+          ? "live"
+          : row.kind === "event"
+            ? "event"
+            : "study";
 
     return {
       time: date.toLocaleTimeString("en", {
@@ -835,16 +854,24 @@ export async function getDashboardData(): Promise<DashboardData> {
       }),
       title: stringValue(row.title, "Scheduled event"),
       meta: stringValue(classRecord?.name, "Personal schedule"),
-      kind:
-        row.kind === "exam"
-          ? "exam"
-          : row.kind === "live"
-            ? "live"
-            : row.kind === "event"
-              ? "event"
-              : "study",
+      kind,
     };
   });
+
+  const schedule: ScheduleItem[] = [
+    ...timetableSessions.slice(0, 8).map((session) => ({
+      time: new Date(session.startsAt).toLocaleTimeString("en", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      title: session.subjectName,
+      meta: [session.className, session.venue, session.teacherName]
+        .filter(Boolean)
+        .join(" - "),
+      kind: "live" as const,
+    })),
+    ...eventSchedule,
+  ];
 
   const now = Date.now();
   const upcomingTasks: UpcomingTask[] = [
@@ -882,6 +909,15 @@ export async function getDashboardData(): Promise<DashboardData> {
         };
       })
       .filter((task) => new Date(task.dueAt).getTime() >= now),
+    ...timetableSessions.map((session) => ({
+      id: session.id,
+      title: session.subjectName,
+      kind: "live" as const,
+      dueAt: session.startsAt,
+      className: [session.className, session.venue].filter(Boolean).join(" - "),
+      status: "scheduled",
+      href: session.actionUrl,
+    })),
   ]
     .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
     .slice(0, 1000);

@@ -105,8 +105,10 @@ export const roleNav: Record<Role, NavItem[]> = {
   admin: [
     { title: "Dashboard", href: "/admin", icon: Gauge },
     { title: "Users", href: "/admin/users", icon: UsersRound },
+    { title: "Classes", href: "/admin/classes", icon: GraduationCap },
     { title: "ID Maker", href: "/admin/id-maker", icon: UserPlus },
     { title: "Invites", href: "/admin/invites", icon: UserPlus },
+    { title: "Timetable", href: "/admin/timetable", icon: CalendarClock },
     { title: "Contact", href: "/admin/contact", icon: MessageSquareText },
     { title: "Reports", href: "/admin/reports", icon: FileText },
     { title: "Analytics", href: "/admin/analytics", icon: ChartNoAxesCombined },
@@ -117,7 +119,9 @@ export const roleNav: Record<Role, NavItem[]> = {
   super_admin: [
     { title: "Dashboard", href: "/admin", icon: Gauge },
     { title: "Organizations", href: "/admin/users", icon: GraduationCap },
+    { title: "Classes", href: "/admin/classes", icon: GraduationCap },
     { title: "ID Maker", href: "/admin/id-maker", icon: UserPlus },
+    { title: "Timetable", href: "/admin/timetable", icon: CalendarClock },
     { title: "Contact", href: "/admin/contact", icon: MessageSquareText },
     { title: "Reports", href: "/admin/reports", icon: FileText },
     { title: "Settings", href: "/admin/settings", icon: Settings },

@@ -46,7 +46,7 @@ export async function GET() {
   const enhancedResult = await context.supabase
     .from("notifications")
     .select(
-      "id,title,body,kind,read_at,created_at,scheduled_for,metadata,action_url",
+      "id,title,body,kind,read_at,created_at,scheduled_for,metadata,action_url,dedupe_key",
     )
     .eq("org_id", context.session.orgId)
     .eq("recipient_id", context.profileId)
@@ -117,6 +117,7 @@ export async function GET() {
       readAt: stringValue(row.read_at) || null,
       createdAt: stringValue(row.created_at) || new Date().toISOString(),
       actionUrl: stringValue(row.action_url) || null,
+      dedupeKey: stringValue(row.dedupe_key) || null,
     }));
 
   return NextResponse.json({ ok: true, notifications });

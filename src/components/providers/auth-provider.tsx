@@ -100,7 +100,6 @@ async function waitForFirebaseUser(timeoutMs = 3_500) {
 
   return new Promise<FirebaseAuthUser | null>((resolve) => {
     let settled = false;
-    let timeout: number;
     let unsubscribe = () => {};
     const finish = (firebaseUser: FirebaseAuthUser | null) => {
       if (settled) return;
@@ -109,7 +108,7 @@ async function waitForFirebaseUser(timeoutMs = 3_500) {
       unsubscribe();
       resolve(firebaseUser);
     };
-    timeout = window.setTimeout(() => finish(auth.currentUser), timeoutMs);
+    const timeout = window.setTimeout(() => finish(auth.currentUser), timeoutMs);
     unsubscribe = onAuthStateChanged(auth, finish);
   });
 }

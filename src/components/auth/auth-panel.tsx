@@ -311,22 +311,26 @@ export function AuthPanel({ mode }: { mode: AuthPanelMode }) {
   useEffect(() => {
     if (!user || isReset || redirectBlocked) return;
 
-    if (user.onboardingCompleted) {
+    const redirectTimer = window.setTimeout(() => {
+      if (user.onboardingCompleted) {
+        void goToWorkspace(homeForRole(user.role));
+        return;
+      }
+
+      if (user.role === "student") {
+        void goToWorkspace("/onboarding/student");
+        return;
+      }
+
+      if (user.role === "teacher") {
+        void goToWorkspace("/onboarding/teacher");
+        return;
+      }
+
       void goToWorkspace(homeForRole(user.role));
-      return;
-    }
+    }, 0);
 
-    if (user.role === "student") {
-      void goToWorkspace("/onboarding/student");
-      return;
-    }
-
-    if (user.role === "teacher") {
-      void goToWorkspace("/onboarding/teacher");
-      return;
-    }
-
-    void goToWorkspace(homeForRole(user.role));
+    return () => window.clearTimeout(redirectTimer);
   }, [goToWorkspace, isReset, redirectBlocked, user]);
 
   async function finish(result: AuthSessionResult) {

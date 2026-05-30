@@ -86,7 +86,7 @@ export async function POST(request: Request) {
           title: "You have a class invite.",
           body:
             body.role === "teacher"
-              ? `${context.session.displayName} invited you to collaborate as a teacher in ${classAccess?.name ?? "an EduPulse class"}. Open the secure invite link and create your account.`
+              ? `${context.session.displayName} invited you to collaborate as a teacher in ${classAccess?.name ?? "an EduPulse class"}. Open the secure invite link, create your account, and the class owner will approve your access.`
               : `${context.session.displayName} invited you to join ${classAccess?.name ?? "an EduPulse class"}. Open the secure invite link, create your password, and the class will be added to your workspace.`,
           detailLabel: "Class",
           detailValue: classAccess?.name ?? "EduPulse class",

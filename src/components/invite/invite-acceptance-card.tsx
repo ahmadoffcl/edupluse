@@ -45,8 +45,13 @@ function createDeviceSessionId() {
   return id;
 }
 
-function dashboardPath(role: Role, onboardingCompleted: boolean) {
+function dashboardPath(
+  role: Role,
+  onboardingCompleted: boolean,
+  pendingApproval = false,
+) {
   if (role === "admin" || role === "super_admin") return "/admin";
+  if (role === "teacher" && pendingApproval) return "/teacher";
   if (!onboardingCompleted) return `/onboarding/${role}`;
   return `/${role}`;
 }
@@ -159,6 +164,7 @@ export function InviteAcceptanceCard({ token }: { token: string }) {
         ok?: boolean;
         role?: Role;
         onboardingCompleted?: boolean;
+        pendingApproval?: boolean;
         error?: string;
       };
 
@@ -169,7 +175,11 @@ export function InviteAcceptanceCard({ token }: { token: string }) {
       window.localStorage.setItem("lumina.active.role", result.role);
       toast.success("Workspace joined.");
       router.replace(
-        dashboardPath(result.role, Boolean(result.onboardingCompleted)),
+        dashboardPath(
+          result.role,
+          Boolean(result.onboardingCompleted),
+          Boolean(result.pendingApproval),
+        ),
       );
     } catch (caught) {
       toast.error("Invite acceptance failed", {

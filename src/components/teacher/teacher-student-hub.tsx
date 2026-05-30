@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   CheckCircle2,
+  Clock3,
   MessageSquareText,
   Search,
   Sparkles,
   Trash2,
   TrendingUp,
+  UserCheck,
   X,
   XCircle,
 } from "lucide-react";
@@ -447,6 +449,7 @@ export function TeacherStudentHub({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
+  const [busyTeacherId, setBusyTeacherId] = useState<string | null>(null);
   const students = useMemo(
     () =>
       data.students
@@ -466,6 +469,53 @@ export function TeacherStudentHub({
     (request) =>
       request.classId === classRecord.id && request.status === "pending",
   );
+  const classTeachers = data.classTeachers.filter(
+    (teacher) => teacher.classId === classRecord.id,
+  );
+  const pendingTeachers = classTeachers.filter(
+    (teacher) => teacher.status === "pending",
+  );
+  const activeTeachers = classTeachers.filter(
+    (teacher) => teacher.status === "active",
+  );
+
+  async function reviewTeacher(
+    teacherId: string,
+    action: "approve" | "reject",
+  ) {
+    setBusyTeacherId(teacherId);
+    try {
+      const response = await fetch(
+        `/api/teacher/classes/${classRecord.id}/teachers/${teacherId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        },
+      );
+      const result = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
+
+      if (!response.ok || result?.ok === false) {
+        throw new Error(result?.error ?? "Unable to review co-teacher.");
+      }
+
+      toast.success(
+        action === "approve"
+          ? "Co-teacher approved."
+          : "Co-teacher request declined.",
+      );
+      router.refresh();
+    } catch (error) {
+      toast.error("Co-teacher action failed", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setBusyTeacherId(null);
+    }
+  }
 
   async function reviewRequest(
     requestId: string,
@@ -505,6 +555,110 @@ export function TeacherStudentHub({
 
   return (
     <div className="space-y-4">
+      {classTeachers.length > 0 ? (
+        <Card className="border-indigo-400/20 bg-indigo-500/5">
+          <CardContent className="space-y-4 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="flex items-center gap-2 font-semibold">
+                  <UserCheck className="size-4 text-primary" />
+                  Co-teachers
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Teacher invites join this exact class after owner approval.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="success">{activeTeachers.length} active</Badge>
+                {pendingTeachers.length ? (
+                  <Badge variant="warning">
+                    {pendingTeachers.length} waiting
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
+
+            {pendingTeachers.length > 0 ? (
+              <div className="space-y-2">
+                <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  <Clock3 className="size-3.5" />
+                  Waiting for approval
+                </p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {pendingTeachers.map((teacher) => (
+                    <div
+                      key={teacher.id}
+                      className="rounded-3xl border border-border bg-card/86 p-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="grid size-10 place-items-center rounded-full bg-amber-500/12 text-xs font-bold text-amber-600">
+                          {initials(teacher.teacherName)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold">
+                            {teacher.teacherName}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {teacher.teacherUsername
+                              ? `@${teacher.teacherUsername}`
+                              : teacher.teacherEmail}
+                          </span>
+                        </span>
+                        <Badge variant="warning">Waiting</Badge>
+                      </div>
+                      {classRecord.canApproveTeachers ? (
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={busyTeacherId === teacher.teacherId}
+                            onClick={() =>
+                              reviewTeacher(teacher.teacherId, "approve")
+                            }
+                          >
+                            <CheckCircle2 />
+                            Approve
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={busyTeacherId === teacher.teacherId}
+                            onClick={() =>
+                              reviewTeacher(teacher.teacherId, "reject")
+                            }
+                          >
+                            <XCircle />
+                            Decline
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {activeTeachers.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {activeTeachers.map((teacher) => (
+                  <span
+                    key={teacher.id}
+                    className="inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-background/70 px-3 py-2 text-sm"
+                  >
+                    <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                      {initials(teacher.teacherName)}
+                    </span>
+                    <span className="truncate">{teacher.teacherName}</span>
+                    <Badge variant="success">Approved</Badge>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {pendingRequests.length > 0 ? (
         <Card className="border-primary/20 bg-primary/5">
           <CardContent className="space-y-3 p-4">
