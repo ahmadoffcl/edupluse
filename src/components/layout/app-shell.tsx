@@ -616,13 +616,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
 
-      <div
-        className={cn(
-          "pointer-events-none fixed right-0 top-0 z-[25] hidden h-28 bg-background/96 backdrop-blur-xl lg:block",
-          sidebarCollapsed ? "lg:left-24" : "lg:left-72",
-        )}
-      />
-
       <main
         className={cn(
           "min-h-screen px-3 pb-24 pt-20 sm:px-4 sm:pb-28 lg:pb-10 lg:pr-6 lg:pt-28",

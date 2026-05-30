@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { TeacherClassroomDetail } from "@/components/teacher/classroom-dashboard";
 import { getTeacherWorkflowData } from "@/lib/dashboard/teacher-workflow";
+import { getFeatureFlags } from "@/lib/server/feature-flags";
 
 export default async function TeacherClassDetailPage({
   params,
@@ -11,7 +12,10 @@ export default async function TeacherClassDetailPage({
 }) {
   const { id } = await params;
   const { tab } = await searchParams;
-  const data = await getTeacherWorkflowData();
+  const [data, flags] = await Promise.all([
+    getTeacherWorkflowData(),
+    getFeatureFlags(),
+  ]);
   const classRecord = data.classes.find((item) => item.id === id);
 
   if (!classRecord) {
@@ -31,6 +35,7 @@ export default async function TeacherClassDetailPage({
       data={data}
       classRecord={classRecord}
       initialTab={initialTab}
+      smartLearningEnabled={flags.smartLearningEnabled}
     />
   );
 }

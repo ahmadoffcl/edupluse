@@ -90,10 +90,14 @@ function nextTeacherDeadline(data: TeacherWorkflowData, classId: string) {
 function ClassInterventionPanel({
   data,
   classRecord,
+  enabled,
 }: {
   data: TeacherWorkflowData;
   classRecord: TeacherClassOption;
+  enabled: boolean;
 }) {
+  if (!enabled) return null;
+
   const studentsById = new Map(
     data.students.map((student) => [student.id, student]),
   );
@@ -823,15 +827,19 @@ function ClassDetailRow({
           </Button>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-4 gap-2">
           {summaryStats.map(({ label, value, icon: Icon }) => (
             <div
               key={label}
-              className="rounded-3xl border border-border bg-background/55 p-3"
+              className="min-w-0 rounded-2xl border border-border bg-background/55 p-2 text-center sm:p-3 sm:text-left"
             >
-              <Icon className="mb-3 size-4 text-primary" />
-              <p className="text-lg font-semibold">{value}</p>
-              <p className="text-xs text-muted-foreground">{label}</p>
+              <Icon className="mx-auto mb-1 size-4 text-primary sm:mx-0 sm:mb-3" />
+              <p className="text-base font-semibold leading-5 sm:text-lg">
+                {value}
+              </p>
+              <p className="truncate text-[10px] text-muted-foreground sm:text-xs">
+                {label}
+              </p>
             </div>
           ))}
         </div>
@@ -871,7 +879,12 @@ function ClassDetailRow({
   );
 }
 
-export function TeacherClassroomHome({ data }: { data: TeacherWorkflowData }) {
+export function TeacherClassroomHome({
+  data,
+}: {
+  data: TeacherWorkflowData;
+  smartLearningEnabled?: boolean;
+}) {
   const hasClasses = data.classes.length > 0;
 
   if (!hasClasses) {
@@ -897,17 +910,19 @@ export function TeacherClassroomHome({ data }: { data: TeacherWorkflowData }) {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-4">
-        <div className="space-y-4">
-          <Badge variant="info">Teacher workspace</Badge>
-          <h1 className="max-w-3xl text-3xl font-semibold tracking-tight md:text-5xl">
-            Your classrooms
-          </h1>
-          <p className="max-w-2xl text-muted-foreground">
-            Open a class to post assignments, share updates, and manage
-            students.
-          </p>
+    <div className="space-y-5 sm:space-y-7">
+      <section className="overflow-hidden rounded-[2rem] border border-border bg-card/86 p-4 shadow-[var(--shadow-glass)] sm:p-6">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
+          <div>
+            <Badge variant="info">Teacher workspace</Badge>
+            <h1 className="mt-3 max-w-3xl text-3xl font-semibold tracking-tight md:text-5xl">
+              Your classrooms
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+              Open a class to post assignments, share updates, and manage
+              students without clutter.
+            </p>
+          </div>
           <TeacherHomeStats data={data} />
         </div>
       </section>
@@ -985,10 +1000,12 @@ export function TeacherClassroomDetail({
   data,
   classRecord,
   initialTab = "stream",
+  smartLearningEnabled = false,
 }: {
   data: TeacherWorkflowData;
   classRecord: TeacherClassOption;
   initialTab?: "stream" | "classwork" | "materials" | "people";
+  smartLearningEnabled?: boolean;
 }) {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
@@ -1112,22 +1129,30 @@ export function TeacherClassroomDetail({
       </Button>
       <Banner classRecord={classRecord} />
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-4 gap-2">
         {summaryStats.map(([label, value, Icon, targetTab]) => (
           <button
             key={label}
             type="button"
             onClick={() => setTab(targetTab)}
-            className="min-w-0 rounded-2xl border border-border bg-card/78 p-2.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-muted sm:p-3"
+            className="min-w-0 rounded-2xl border border-border bg-card/78 p-2 text-center shadow-sm transition hover:-translate-y-0.5 hover:bg-muted sm:p-3 sm:text-left"
           >
-            <Icon className="mb-2 size-4 text-primary" />
-            <p className="text-lg font-semibold sm:text-xl">{value}</p>
-            <p className="text-xs text-muted-foreground">{label}</p>
+            <Icon className="mx-auto mb-1 size-4 text-primary sm:mx-0 sm:mb-2" />
+            <p className="text-base font-semibold leading-5 sm:text-xl">
+              {value}
+            </p>
+            <p className="truncate text-[10px] text-muted-foreground sm:text-xs">
+              {label}
+            </p>
           </button>
         ))}
       </div>
 
-      <ClassInterventionPanel data={data} classRecord={classRecord} />
+      <ClassInterventionPanel
+        data={data}
+        classRecord={classRecord}
+        enabled={smartLearningEnabled}
+      />
 
       <div className="glass-panel sticky top-3 z-20 flex gap-1 overflow-x-auto rounded-full p-1 lg:top-24">
         {tabs.map(({ value, label, icon: Icon }) => (
@@ -1456,7 +1481,11 @@ export function TeacherClassroomDetail({
           ) : null}
 
           {tab === "people" ? (
-            <TeacherStudentHub data={data} classRecord={classRecord} />
+            <TeacherStudentHub
+              data={data}
+              classRecord={classRecord}
+              smartLearningEnabled={smartLearningEnabled}
+            />
           ) : null}
         </motion.main>
       </AnimatePresence>

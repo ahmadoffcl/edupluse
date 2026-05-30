@@ -46,10 +46,12 @@ function StudentDrawer({
   data,
   classRecord,
   student,
+  smartLearningEnabled,
 }: {
   data: TeacherWorkflowData;
   classRecord: TeacherClassOption;
   student: TeacherStudentOption;
+  smartLearningEnabled: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -251,62 +253,66 @@ function StudentDrawer({
               </div>
             ) : null}
 
-            <div className="rounded-3xl border border-amber-400/20 bg-gradient-to-br from-amber-500/10 via-card to-card p-4 dark:bg-card">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="size-4 text-amber-500" />
-                  <div>
-                    <p className="font-semibold">Student focus signal</p>
-                    <p className="text-xs text-muted-foreground">
-                      What this learner may need next, from real missions.
-                    </p>
+            {smartLearningEnabled ? (
+              <div className="rounded-3xl border border-amber-400/20 bg-gradient-to-br from-amber-500/10 via-card to-card p-4 dark:bg-card">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="size-4 text-amber-500" />
+                    <div>
+                      <p className="font-semibold">Student focus signal</p>
+                      <p className="text-xs text-muted-foreground">
+                        What this learner may need next, from real missions.
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <Badge
-                  variant={
-                    missionSignal?.urgentCount
-                      ? "danger"
-                      : missionSignal?.openCount
-                        ? "warning"
-                        : "success"
-                  }
-                >
-                  {missionSignal?.openCount ?? 0} open
-                </Badge>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  ["Finished", missionSignal?.completedCount ?? 0],
-                  ["Urgent", missionSignal?.urgentCount ?? 0],
-                  ["Missed", missionSignal?.missedCount ?? 0],
-                ].map(([label, value]) => (
-                  <div
-                    key={label}
-                    className="rounded-2xl border border-border/70 bg-background/72 p-3"
+                  <Badge
+                    variant={
+                      missionSignal?.urgentCount
+                        ? "danger"
+                        : missionSignal?.openCount
+                          ? "warning"
+                          : "success"
+                    }
                   >
-                    <p className="text-lg font-semibold">{value}</p>
-                    <p className="text-[11px] text-muted-foreground">{label}</p>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-3 rounded-2xl border border-border bg-background/72 p-3 text-sm text-muted-foreground">
-                {missionSignal?.latestTitle
-                  ? `Current focus: ${missionSignal.latestTitle}`
-                  : "No active mission activity for this class yet."}
-              </p>
-              {missionSignal?.lastActionLabel ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Last action: {missionSignal.lastActionLabel}
-                  {missionSignal.lastActionAt
-                    ? ` - ${formatDate(missionSignal.lastActionAt)}`
-                    : ""}
+                    {missionSignal?.openCount ?? 0} open
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    ["Finished", missionSignal?.completedCount ?? 0],
+                    ["Urgent", missionSignal?.urgentCount ?? 0],
+                    ["Missed", missionSignal?.missedCount ?? 0],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-2xl border border-border/70 bg-background/72 p-3"
+                    >
+                      <p className="text-lg font-semibold">{value}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 rounded-2xl border border-border bg-background/72 p-3 text-sm text-muted-foreground">
+                  {missionSignal?.latestTitle
+                    ? `Current focus: ${missionSignal.latestTitle}`
+                    : "No active mission activity for this class yet."}
                 </p>
-              ) : null}
-              <p className="mt-2 rounded-2xl bg-amber-500/10 p-3 text-sm font-medium dark:bg-white/5">
-                {missionSignal?.suggestedFollowUp ??
-                  "No mission risk is visible yet."}
-              </p>
-            </div>
+                {missionSignal?.lastActionLabel ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Last action: {missionSignal.lastActionLabel}
+                    {missionSignal.lastActionAt
+                      ? ` - ${formatDate(missionSignal.lastActionAt)}`
+                      : ""}
+                  </p>
+                ) : null}
+                <p className="mt-2 rounded-2xl bg-amber-500/10 p-3 text-sm font-medium dark:bg-white/5">
+                  {missionSignal?.suggestedFollowUp ??
+                    "No mission risk is visible yet."}
+                </p>
+              </div>
+            ) : null}
 
             <div className="rounded-3xl border border-border bg-background/60 p-4">
               <p className="mb-3 font-semibold">Assignment status</p>
@@ -432,9 +438,11 @@ function StudentDrawer({
 export function TeacherStudentHub({
   data,
   classRecord,
+  smartLearningEnabled = false,
 }: {
   data: TeacherWorkflowData;
   classRecord: TeacherClassOption;
+  smartLearningEnabled?: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -588,6 +596,7 @@ export function TeacherStudentHub({
               data={data}
               classRecord={classRecord}
               student={student}
+              smartLearningEnabled={smartLearningEnabled}
             />
           ))}
         </div>

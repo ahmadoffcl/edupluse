@@ -852,7 +852,7 @@ export function StudentClassroomDetail({
       </Button>
       <ClassHero classRecord={classRecord} />
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-4 gap-2">
         {summaryStats.map(([label, value, Icon]) => (
           <button
             key={label}
@@ -863,11 +863,15 @@ export function StudentClassroomDetail({
               if (label === "Posts") setTab("stream");
               if (label === "People") setTab("people");
             }}
-            className="min-w-0 rounded-2xl border border-border bg-card/78 p-2.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-muted sm:p-3"
+            className="min-w-0 rounded-2xl border border-border bg-card/78 p-2 text-center shadow-sm transition hover:-translate-y-0.5 hover:bg-muted sm:p-3 sm:text-left"
           >
-            <Icon className="mb-2 size-4 text-primary" />
-            <p className="text-lg font-semibold sm:text-xl">{value}</p>
-            <p className="text-xs text-muted-foreground">{label}</p>
+            <Icon className="mx-auto mb-1 size-4 text-primary sm:mx-0 sm:mb-2" />
+            <p className="text-base font-semibold leading-5 sm:text-xl">
+              {value}
+            </p>
+            <p className="truncate text-[10px] text-muted-foreground sm:text-xs">
+              {label}
+            </p>
           </button>
         ))}
       </div>
