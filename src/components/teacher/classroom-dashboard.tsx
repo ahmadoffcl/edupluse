@@ -32,6 +32,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ClassroomCard as PremiumClassroomCard } from "@/components/classroom/classroom-card";
+import {
+  ClassroomEmptyHome,
+  ClassroomHomeFrame,
+} from "@/components/dashboard/classroom-home-frame";
 import { EmptyState } from "@/components/dashboard/content-blocks";
 import {
   FileDownloadButton,
@@ -667,9 +671,27 @@ function AddStudentsPanel({ data }: { data: TeacherWorkflowData }) {
   );
 }
 
-function TeacherFloatingActions({ data }: { data: TeacherWorkflowData }) {
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"menu" | "create" | "students">("menu");
+type TeacherActionMode = "menu" | "create" | "students";
+
+function TeacherFloatingActions({
+  data,
+  open: controlledOpen,
+  mode: controlledMode,
+  onOpenChange,
+  onModeChange,
+}: {
+  data: TeacherWorkflowData;
+  open?: boolean;
+  mode?: TeacherActionMode;
+  onOpenChange?: (open: boolean) => void;
+  onModeChange?: (mode: TeacherActionMode) => void;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const [internalMode, setInternalMode] = useState<TeacherActionMode>("menu");
+  const open = controlledOpen ?? internalOpen;
+  const mode = controlledMode ?? internalMode;
+  const setOpen = onOpenChange ?? setInternalOpen;
+  const setMode = onModeChange ?? setInternalMode;
 
   return (
     <>
@@ -740,7 +762,7 @@ function TeacherFloatingActions({ data }: { data: TeacherWorkflowData }) {
 
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
         className="fixed bottom-24 right-5 z-50 grid size-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_20px_45px_-20px_var(--primary)] transition hover:-translate-y-1 md:right-8"
         aria-label="Add"
       >
@@ -946,11 +968,132 @@ function ClassDetailRow({
 
 export function TeacherClassroomHome({
   data,
+  homeView = false,
 }: {
   data: TeacherWorkflowData;
   smartLearningEnabled?: boolean;
+  homeView?: boolean;
 }) {
   const hasClasses = data.classes.length > 0;
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickMode, setQuickMode] = useState<TeacherActionMode>("menu");
+  const openCreateClass = () => {
+    setQuickMode("create");
+    setQuickOpen(true);
+  };
+  const topCreateAction = (
+    <button
+      type="button"
+      className="grid size-10 place-items-center rounded-full text-[#3c4043] transition hover:bg-[#f1f3f4]"
+      aria-label="Create class"
+      onClick={openCreateClass}
+    >
+      <Plus className="size-5" />
+    </button>
+  );
+  const floatingActions = (
+    <TeacherFloatingActions
+      data={data}
+      open={quickOpen}
+      mode={quickMode}
+      onOpenChange={setQuickOpen}
+      onModeChange={setQuickMode}
+    />
+  );
+
+  if (homeView) {
+    if (!hasClasses) {
+      return (
+        <div className="space-y-4">
+          <PendingTeacherApprovalNotice data={data} />
+          <ClassroomEmptyHome
+            role="teacher"
+            title="Add a class to get started"
+            topAction={topCreateAction}
+            userName={data.profile?.displayName}
+          >
+            <Button
+              type="button"
+              className="rounded-full bg-[#0b57d0] px-7 text-white hover:bg-[#0842a0]"
+              variant="ghost"
+              onClick={openCreateClass}
+            >
+              Create class
+            </Button>
+          </ClassroomEmptyHome>
+          {floatingActions}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <PendingTeacherApprovalNotice data={data} />
+        <ClassroomHomeFrame
+          role="teacher"
+          topAction={topCreateAction}
+          userName={data.profile?.displayName}
+          className="p-4 sm:p-6"
+        >
+          <div className="mx-auto max-w-6xl space-y-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h1 className="text-2xl font-medium tracking-tight sm:text-3xl">
+                  Home
+                </h1>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Open your classrooms, classwork, students, and materials.
+                </p>
+              </div>
+              <Button
+                type="button"
+                className="w-fit rounded-full px-5"
+                variant="premium"
+                onClick={openCreateClass}
+              >
+                <Plus className="size-4" /> Create class
+              </Button>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {data.classes.map((classRecord) => (
+                <PremiumClassroomCard
+                  key={classRecord.id}
+                  href={`/teacher/classes/${classRecord.id}`}
+                  name={classRecord.name}
+                  description={classRecord.description}
+                  bannerUrl={classRecord.bannerUrl}
+                  teacherName="You"
+                  section={classRecord.section}
+                  term={classRecord.term}
+                  roleLabel="Teacher"
+                  nextDeadline={nextTeacherDeadline(data, classRecord.id)}
+                  stats={[
+                    {
+                      label: "Students",
+                      value: classStudents(data, classRecord.id).length,
+                      icon: "people",
+                    },
+                    {
+                      label: "Work",
+                      value: classAssignments(data, classRecord.id).length,
+                      icon: "assignments",
+                    },
+                    {
+                      label: "Files",
+                      value: classResources(data, classRecord.id).length,
+                      icon: "materials",
+                    },
+                  ]}
+                />
+              ))}
+            </div>
+          </div>
+        </ClassroomHomeFrame>
+        {floatingActions}
+      </div>
+    );
+  }
 
   if (!hasClasses) {
     return (
@@ -970,7 +1113,7 @@ export function TeacherClassroomHome({
           variant="assignments"
           message="Tap the floating plus button to create a classroom."
         />
-        <TeacherFloatingActions data={data} />
+        {floatingActions}
       </div>
     );
   }
@@ -1052,7 +1195,7 @@ export function TeacherClassroomHome({
           ))}
         </div>
       </section>
-      <TeacherFloatingActions data={data} />
+      {floatingActions}
     </div>
   );
 }

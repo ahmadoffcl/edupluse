@@ -640,6 +640,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const classroomHomeRoute =
+    (pathname === "/student" && user.role === "student") ||
+    (pathname === "/teacher" && user.role === "teacher");
+
+  if (classroomHomeRoute) {
+    return <>{children}</>;
+  }
+
   const notificationDropdown = (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>

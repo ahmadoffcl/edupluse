@@ -12,6 +12,7 @@ export default async function TeacherDashboardPage() {
     <TeacherClassroomHome
       data={data}
       smartLearningEnabled={flags.smartLearningEnabled}
+      homeView
     />
   );
 }

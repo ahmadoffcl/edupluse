@@ -13,7 +13,7 @@ import {
 export const runtime = "nodejs";
 
 type Params = {
-  params: Promise<{ assignmentId: string; submissionId: string }>;
+  params: Promise<{ id: string; submissionId: string }>;
 };
 
 async function checkedContext(params: Params["params"]) {
@@ -24,7 +24,8 @@ async function checkedContext(params: Params["params"]) {
   ]);
   if (isWorkflowResponse(context)) return context;
 
-  const { assignmentId, submissionId } = await params;
+  const { id, submissionId } = await params;
+  const assignmentId = id;
   const assignment = await requireAssignmentAccess(context, assignmentId);
   if (isWorkflowResponse(assignment)) return assignment;
 
