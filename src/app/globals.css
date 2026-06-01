@@ -153,6 +153,16 @@ select {
   background-image: none;
 }
 
+.classroom-shell-main .sticky {
+  top: 5.5rem !important;
+}
+
+@media (min-width: 768px) {
+  .classroom-shell-main .sticky {
+    top: 5.75rem !important;
+  }
+}
+
 html.edupulse-welcome-pending #edupulse-app-content,
 html.edupulse-welcome-active #edupulse-app-content {
   opacity: 0;

@@ -2,25 +2,33 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   Archive,
   BarChart3,
   BookOpen,
   CalendarDays,
+  ChevronRight,
   ClipboardList,
   Clock3,
   FileText,
   HelpCircle,
   Home,
+  KeyRound,
+  Link2,
+  LogOut,
   Menu,
   MessageSquare,
   Plus,
   Settings,
   Trophy,
+  UserRound,
   UsersRound,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/components/providers/auth-provider";
 import { cn } from "@/lib/utils";
 
 export function ClassroomHomeFrame({
@@ -40,6 +48,8 @@ export function ClassroomHomeFrame({
   topAction?: ReactNode;
   currentPath?: string;
 }) {
+  const router = useRouter();
+  const { logout, user } = useAuth();
   const homeHref = role === "teacher" ? "/teacher" : "/student";
   const calendarHref =
     role === "teacher" ? "/teacher/calendar" : "/student/calendar";
@@ -91,6 +101,11 @@ export function ClassroomHomeFrame({
   ];
   const navItems = role === "student" ? studentNavItems : teacherNavItems;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [classCode, setClassCode] = useState("");
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [joining, setJoining] = useState(false);
   const mobilePriorityItems =
     role === "student"
       ? studentNavItems.filter((item) =>
@@ -117,6 +132,62 @@ export function ClassroomHomeFrame({
     "--primary-foreground": "#ffffff",
   } as CSSProperties;
 
+  async function joinClassByCode() {
+    if (!classCode.trim()) return;
+    setJoining(true);
+    try {
+      const response = await fetch("/api/student/classes/join-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: classCode.trim() }),
+      });
+      const result = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        className?: string;
+        error?: string;
+      } | null;
+
+      if (!response.ok || result?.ok === false) {
+        throw new Error(result?.error ?? "Unable to join this class.");
+      }
+
+      toast.success("Class joined", {
+        description: result?.className ?? "Your classroom is ready.",
+      });
+      setClassCode("");
+      setJoinOpen(false);
+      router.refresh();
+    } catch (error) {
+      toast.error("Join failed", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setJoining(false);
+    }
+  }
+
+  function openInviteUrl() {
+    const value = inviteUrl.trim();
+    if (!value) return;
+
+    try {
+      const url = new URL(value, window.location.origin);
+      if (!url.pathname.startsWith("/invite/")) {
+        toast.error("Invite link is not valid", {
+          description: "Paste the classroom invite link your teacher shared.",
+        });
+        return;
+      }
+      setInviteUrl("");
+      setJoinOpen(false);
+      router.push(`${url.pathname}${url.search}`);
+    } catch {
+      toast.error("Invite link is not valid", {
+        description: "Paste the full invite link or use a class code.",
+      });
+    }
+  }
+
   return (
     <section
       className="fixed inset-0 z-[200] overflow-hidden bg-[#f5f8fc] text-[#202124] antialiased dark:bg-[#f5f8fc] dark:text-[#202124]"
@@ -142,27 +213,83 @@ export function ClassroomHomeFrame({
         </Link>
 
         <div className="ml-auto flex items-center gap-3">
-          {topAction ?? (
-            <Link
-              href={classesHref}
-              className="grid size-10 place-items-center rounded-full text-[#3c4043] transition hover:bg-[#f1f3f4]"
-              aria-label={role === "teacher" ? "Create class" : "Join class"}
-            >
-              <Plus className="size-5" />
-            </Link>
-          )}
-          <span className="relative grid size-9 place-items-center overflow-hidden rounded-full bg-[#5f63d8] text-sm font-medium text-white">
+          {topAction ??
+            (role === "student" ? (
+              <button
+                type="button"
+                onClick={() => setJoinOpen(true)}
+                className="grid size-10 place-items-center rounded-full text-[#3c4043] transition hover:bg-[#f1f3f4]"
+                aria-label="Join class"
+              >
+                <Plus className="size-5" />
+              </button>
+            ) : (
+              <Link
+                href={classesHref}
+                className="grid size-10 place-items-center rounded-full text-[#3c4043] transition hover:bg-[#f1f3f4]"
+                aria-label="Create class"
+              >
+                <Plus className="size-5" />
+              </Link>
+            ))}
+          <button
+            type="button"
+            onClick={() => setProfileOpen((value) => !value)}
+            className="relative grid size-9 place-items-center overflow-hidden rounded-full bg-[#5f63d8] text-sm font-medium text-white ring-2 ring-transparent transition hover:ring-[#d2e3fc]"
+            aria-label="Open profile"
+          >
             {userPhotoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                alt=""
-                className="size-full object-cover"
-                src={userPhotoUrl}
-              />
+              <img alt="" className="size-full object-cover" src={userPhotoUrl} />
             ) : (
               initial
             )}
-          </span>
+          </button>
+          {profileOpen ? (
+            <div className="absolute right-4 top-[4.5rem] z-50 w-[min(92vw,20rem)] rounded-[1.5rem] border border-[#e1e7ef] bg-white p-3 text-[#202124] shadow-[0_18px_50px_rgba(60,64,67,0.22)]">
+              <div className="flex items-center gap-3 rounded-2xl bg-[#f8fafd] p-3">
+                <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-full bg-[#5f63d8] text-base font-medium text-white">
+                  {userPhotoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      alt=""
+                      className="size-full object-cover"
+                      src={userPhotoUrl}
+                    />
+                  ) : (
+                    initial
+                  )}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">
+                    {user?.displayName ?? userName ?? "EduPulse user"}
+                  </span>
+                  <span className="block truncate text-xs capitalize text-[#5f6368]">
+                    {role}
+                  </span>
+                </span>
+              </div>
+              <div className="mt-2 space-y-1">
+                <Link
+                  href={settingsHref}
+                  onClick={() => setProfileOpen(false)}
+                  className="flex h-11 items-center justify-between rounded-2xl px-3 text-sm font-medium hover:bg-[#f1f3f4]"
+                >
+                  <span className="flex items-center gap-3">
+                    <UserRound className="size-4" /> Profile settings
+                  </span>
+                  <ChevronRight className="size-4 text-[#5f6368]" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => logout()}
+                  className="flex h-11 w-full items-center gap-3 rounded-2xl px-3 text-left text-sm font-medium hover:bg-[#f1f3f4]"
+                >
+                  <LogOut className="size-4" /> Sign out
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -185,7 +312,7 @@ export function ClassroomHomeFrame({
 
       <main
         className={cn(
-          "h-screen overflow-y-auto pb-24 pt-16 md:pb-6 md:pl-[300px]",
+          "classroom-shell-main h-screen overflow-y-auto scroll-pt-24 pb-24 pt-20 md:pb-6 md:pl-[300px]",
           className,
         )}
       >
@@ -274,6 +401,91 @@ export function ClassroomHomeFrame({
                 </Link>
               ))}
             </nav>
+          </div>
+        </div>
+      ) : null}
+
+      {joinOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 px-4 backdrop-blur-md">
+          <button
+            type="button"
+            aria-label="Close join class"
+            className="absolute inset-0"
+            onClick={() => setJoinOpen(false)}
+          />
+          <div className="relative w-full max-w-lg rounded-[2rem] border border-white/65 bg-white/88 p-5 text-[#202124] shadow-[0_28px_90px_rgba(15,23,42,0.32)] backdrop-blur-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0b57d0]">
+                  Join classroom
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em]">
+                  Enter a class code or invite link.
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-[#5f6368]">
+                  Use the code or invite URL shared by your teacher. You will be
+                  added instantly when the invite allows direct join.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setJoinOpen(false)}
+                className="grid size-10 shrink-0 place-items-center rounded-full hover:bg-[#f1f3f4]"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <label className="block">
+                <span className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  <KeyRound className="size-4 text-[#0b57d0]" /> Class code
+                </span>
+                <input
+                  value={classCode}
+                  onChange={(event) => setClassCode(event.target.value)}
+                  placeholder="Example: OOP-2B"
+                  className="h-12 w-full rounded-2xl border border-[#dadce0] bg-white px-4 text-sm outline-none transition focus:border-[#0b57d0] focus:ring-4 focus:ring-[#d2e3fc]"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={joining || !classCode.trim()}
+                onClick={joinClassByCode}
+                className="h-12 w-full rounded-2xl bg-[#0b57d0] text-sm font-semibold text-white shadow-[0_14px_30px_rgba(11,87,208,0.25)] transition hover:bg-[#0842a0] disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                {joining ? "Joining..." : "Join with code"}
+              </button>
+            </div>
+
+            <div className="my-5 flex items-center gap-3 text-xs font-medium text-[#5f6368]">
+              <span className="h-px flex-1 bg-[#e1e7ef]" />
+              or
+              <span className="h-px flex-1 bg-[#e1e7ef]" />
+            </div>
+
+            <div className="space-y-3">
+              <label className="block">
+                <span className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  <Link2 className="size-4 text-[#0b57d0]" /> Invite URL
+                </span>
+                <input
+                  value={inviteUrl}
+                  onChange={(event) => setInviteUrl(event.target.value)}
+                  placeholder="Paste classroom invite link"
+                  className="h-12 w-full rounded-2xl border border-[#dadce0] bg-white px-4 text-sm outline-none transition focus:border-[#0b57d0] focus:ring-4 focus:ring-[#d2e3fc]"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!inviteUrl.trim()}
+                onClick={openInviteUrl}
+                className="h-12 w-full rounded-2xl border border-[#dadce0] bg-white text-sm font-semibold text-[#202124] transition hover:bg-[#f8fafd] disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                Open invite
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

@@ -94,20 +94,6 @@ export function StudentClassesPanel({
   const visibleClasses = compact
     ? filteredClasses.slice(0, 8)
     : filteredClasses.slice(0, visibleCount);
-  const statusCounts = {
-    enrolled: panelClasses.filter(
-      (item) => item.enrollmentStatus === "enrolled",
-    ).length,
-    pending: panelClasses.filter((item) => item.enrollmentStatus === "pending")
-      .length,
-    suggested: panelClasses.filter(
-      (item) => item.enrollmentStatus === "suggested",
-    ).length,
-    available: panelClasses.filter(
-      (item) => item.enrollmentStatus === "available",
-    ).length,
-  };
-
   async function requestJoin(classId: string) {
     setRequestingId(classId);
     try {
@@ -204,7 +190,7 @@ export function StudentClassesPanel({
       </div>
 
       {!compact ? (
-        <Card className="sticky top-4 z-10 rounded-[1.65rem] border-[#e1e7ef] bg-white/95 shadow-[0_12px_34px_rgba(60,64,67,0.08)] backdrop-blur-xl">
+        <Card className="sticky top-[4.75rem] z-10 rounded-[1.65rem] border-[#e1e7ef] bg-white/95 shadow-[0_12px_34px_rgba(60,64,67,0.08)] backdrop-blur-xl">
           <CardContent className="flex flex-col gap-3 p-3 sm:p-4 md:flex-row md:items-center">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-4 top-3.5 size-4 text-muted-foreground" />
@@ -237,34 +223,6 @@ export function StudentClassesPanel({
             </div>
           </CardContent>
         </Card>
-      ) : null}
-
-      {!compact ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            ["Enrolled", statusCounts.enrolled, "default"],
-            ["Suggested", statusCounts.suggested, "success"],
-            ["Pending", statusCounts.pending, "warning"],
-            ["Available", statusCounts.available, "secondary"],
-          ].map(([label, value, variant]) => (
-            <div
-              key={String(label)}
-              className="min-w-0 rounded-[1.35rem] border border-[#e1e7ef] bg-white p-3 text-center shadow-[0_8px_24px_rgba(60,64,67,0.06)]"
-            >
-              <p className="text-base font-semibold leading-5 sm:text-xl">
-                {value}
-              </p>
-              <Badge
-                className="mt-1 max-w-full truncate px-2 text-[10px] sm:text-xs"
-                variant={
-                  variant as "default" | "success" | "warning" | "secondary"
-                }
-              >
-                {label}
-              </Badge>
-            </div>
-          ))}
-        </div>
       ) : null}
 
       {filteredClasses.length === 0 ? (

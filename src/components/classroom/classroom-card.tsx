@@ -74,7 +74,7 @@ export function ClassroomCard({
     : "Class owner";
   const body = (
     <>
-      <div className="relative h-28 overflow-hidden bg-[#070a12] sm:h-40">
+      <div className="relative h-28 overflow-visible bg-[#33474f] sm:h-32">
         {bannerUrl ? (
           <div
             className="absolute inset-0 bg-cover bg-center transition duration-700 group-hover:scale-105"
@@ -83,10 +83,10 @@ export function ClassroomCard({
         ) : (
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(56,189,248,0.48),transparent_30%),radial-gradient(circle_at_78%_12%,rgba(168,85,247,0.42),transparent_28%),radial-gradient(circle_at_56%_86%,rgba(251,191,36,0.25),transparent_31%),linear-gradient(135deg,#030712,#111827_48%,#18181b)]" />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/28 to-black/10" />
-        <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2 sm:left-4 sm:right-4 sm:top-4">
-          <Badge className="max-w-[62%] truncate border-white/15 bg-white/12 text-white">
-            {meta}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/18 to-black/5" />
+        <div className="absolute left-4 right-4 top-4 flex items-center justify-between gap-2">
+          <Badge className="max-w-[62%] truncate rounded-full border-white/30 bg-white/18 text-white">
+            {roleLabel}
           </Badge>
           {deadline ? (
             <span className="inline-flex min-w-0 items-center gap-1 rounded-full border border-white/15 bg-black/28 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md sm:gap-1.5 sm:px-3 sm:text-xs">
@@ -95,59 +95,61 @@ export function ClassroomCard({
             </span>
           ) : null}
         </div>
-        <div className="absolute bottom-3 left-3 right-3 text-white sm:bottom-4 sm:left-4 sm:right-4">
-          <h3 className="line-clamp-2 text-base font-semibold tracking-tight sm:text-xl">
+        <div className="absolute bottom-4 left-4 right-20 text-white">
+          <h3 className="line-clamp-2 text-lg font-medium tracking-[-0.03em] sm:text-2xl">
             {name}
           </h3>
-          <p className="mt-1 line-clamp-1 text-xs text-white/70">
-            {description || "Open the classroom workspace"}
+          <p className="mt-1 line-clamp-1 text-xs font-medium text-white/88">
+            {teacherName || roleLabel}
           </p>
         </div>
+        <span className="absolute -bottom-9 right-5 grid size-[4.5rem] place-items-center overflow-hidden rounded-full border-4 border-white bg-[#ec407a] text-2xl font-medium text-white shadow-[0_8px_24px_rgba(60,64,67,0.18)]">
+          {initials(teacherName || roleLabel)}
+        </span>
       </div>
 
-      <div className="flex flex-1 flex-col justify-between gap-3 p-3 sm:gap-4 sm:p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/12 text-xs font-bold text-primary">
-              {initials(teacherName || roleLabel)}
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">
-                {teacherName || roleLabel}
+      <div className="flex min-h-36 flex-1 flex-col justify-between gap-3 p-4 pt-12">
+        <div>
+          <p className="line-clamp-2 min-h-10 text-sm leading-5 text-[#5f6368]">
+            {description || meta || teacherCaption}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {stats.slice(0, 3).map((stat) => (
+              <span
+                key={stat.label}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#e1e7ef] bg-[#f8fafd] px-2.5 py-1 text-[11px] font-medium text-[#3c4043]"
+              >
+                {stat.label}
+                <span className="font-semibold text-[#0b57d0]">
+                  {stat.value}
+                </span>
               </span>
-              <span className="block text-xs text-muted-foreground">
-                {teacherCaption}
-              </span>
-            </span>
+            ))}
           </div>
-          {href ? (
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition group-hover:bg-primary group-hover:text-primary-foreground">
-              <ChevronRight className="size-4" />
-            </span>
-          ) : null}
         </div>
 
-        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+        {action ? <div>{action}</div> : null}
+      </div>
+
+      {href ? (
+        <div className="flex h-14 items-center justify-end gap-2 border-t border-[#e1e7ef] px-4">
           {stats.slice(0, 3).map((stat) => {
             const Icon = stat.icon ? iconMap[stat.icon] : ClipboardList;
             return (
-              <div
+              <span
                 key={stat.label}
-                className="min-w-0 rounded-xl border border-border bg-background/58 p-1.5 sm:rounded-2xl sm:p-3"
+                className="grid size-9 place-items-center rounded-full text-[#3c4043] transition group-hover:bg-[#f1f3f4]"
+                title={stat.label}
               >
-                <Icon className="mb-1 size-3.5 text-primary sm:mb-2 sm:size-4" />
-                <p className="truncate text-xs font-semibold sm:text-base">
-                  {stat.value}
-                </p>
-                <p className="truncate text-[10px] text-muted-foreground sm:text-[11px]">
-                  {stat.label}
-                </p>
-              </div>
+                <Icon className="size-5" />
+              </span>
             );
           })}
+          <span className="grid size-9 place-items-center rounded-full text-[#3c4043] transition group-hover:bg-[#f1f3f4]">
+            <ChevronRight className="size-5" />
+          </span>
         </div>
-        {action ? <div>{action}</div> : null}
-      </div>
+      ) : null}
     </>
   );
 
@@ -163,12 +165,12 @@ export function ClassroomCard({
       {href ? (
         <Link
           href={href}
-          className="group flex h-full min-h-[238px] max-w-full flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-card/86 shadow-[0_24px_70px_-45px_rgba(0,0,0,0.85)] ring-1 ring-border/70 backdrop-blur-xl transition sm:min-h-[310px] sm:rounded-[2rem]"
+          className="group flex h-full min-h-[292px] max-w-full flex-col overflow-hidden rounded-[0.85rem] border border-[#dadce0] bg-white shadow-[0_8px_26px_rgba(60,64,67,0.1)] transition hover:border-[#c7cdd6] hover:shadow-[0_14px_36px_rgba(60,64,67,0.16)]"
         >
           {body}
         </Link>
       ) : (
-        <div className="group flex h-full min-h-[238px] max-w-full flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-card/86 shadow-[0_24px_70px_-45px_rgba(0,0,0,0.85)] ring-1 ring-border/70 backdrop-blur-xl transition sm:min-h-[310px] sm:rounded-[2rem]">
+        <div className="group flex h-full min-h-[292px] max-w-full flex-col overflow-hidden rounded-[0.85rem] border border-[#dadce0] bg-white shadow-[0_8px_26px_rgba(60,64,67,0.1)] transition hover:border-[#c7cdd6] hover:shadow-[0_14px_36px_rgba(60,64,67,0.16)]">
           {body}
         </div>
       )}
