@@ -653,7 +653,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         currentPath={pathname}
         userName={user.displayName}
         userPhotoUrl={user.photoURL}
-        className="bg-white p-4 sm:p-6"
+        className="bg-[#fbfcff] p-4 sm:p-6"
       >
         {routePending ? <ClassroomRouteSkeleton /> : children}
       </ClassroomHomeFrame>

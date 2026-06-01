@@ -182,11 +182,13 @@ export function StudentClassesPanel({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">My classes</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-xl font-semibold tracking-[-0.02em] text-[#202124]">
+            My classes
+          </h2>
+          <p className="text-sm leading-6 text-[#5f6368]">
             {compact
               ? "Your active classrooms and next sections."
               : "Enrolled, suggested, and available classes in your institute."}
@@ -202,18 +204,18 @@ export function StudentClassesPanel({
       </div>
 
       {!compact ? (
-        <Card className="sticky top-3 z-10 border-border/70 bg-card/88 backdrop-blur-xl lg:top-24">
-          <CardContent className="flex flex-col gap-3 p-3 md:flex-row md:items-center">
+        <Card className="sticky top-4 z-10 rounded-[1.65rem] border-[#e1e7ef] bg-white/95 shadow-[0_12px_34px_rgba(60,64,67,0.08)] backdrop-blur-xl">
+          <CardContent className="flex flex-col gap-3 p-3 sm:p-4 md:flex-row md:items-center">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-4 top-3.5 size-4 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search classes, teachers, sections, or descriptions"
-                className="pl-11"
+                className="h-11 rounded-full border-[#dadce0] bg-white pl-11 shadow-sm"
               />
             </div>
-            <Badge variant="secondary">
+            <Badge className="rounded-full bg-[#eef3f8] px-3 py-1 text-[#3c4043]">
               {filteredClasses.length} class
               {filteredClasses.length === 1 ? "" : "es"}
             </Badge>
@@ -222,11 +224,13 @@ export function StudentClassesPanel({
                 value={joinCode}
                 onChange={(event) => setJoinCode(event.target.value)}
                 placeholder="Join by class code"
+                className="h-11 rounded-full border-[#dadce0] bg-white shadow-sm"
               />
               <Button
                 type="button"
                 disabled={joiningCode || !joinCode.trim()}
                 onClick={joinByCode}
+                className="rounded-full bg-[#0b57d0] px-5 text-white hover:bg-[#0842a0]"
               >
                 {joiningCode ? "Joining..." : "Join"}
               </Button>
@@ -236,7 +240,7 @@ export function StudentClassesPanel({
       ) : null}
 
       {!compact ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             ["Enrolled", statusCounts.enrolled, "default"],
             ["Suggested", statusCounts.suggested, "success"],
@@ -245,7 +249,7 @@ export function StudentClassesPanel({
           ].map(([label, value, variant]) => (
             <div
               key={String(label)}
-              className="min-w-0 rounded-2xl border border-border bg-card/70 p-2 text-center shadow-sm sm:p-3"
+              className="min-w-0 rounded-[1.35rem] border border-[#e1e7ef] bg-white p-3 text-center shadow-[0_8px_24px_rgba(60,64,67,0.06)]"
             >
               <p className="text-base font-semibold leading-5 sm:text-xl">
                 {value}
@@ -271,7 +275,7 @@ export function StudentClassesPanel({
         className={
           compact
             ? "-mx-2 grid auto-cols-[minmax(250px,84vw)] grid-flow-col snap-x gap-4 overflow-x-auto px-2 pb-3 sm:auto-cols-[330px]"
-            : "grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+            : "grid gap-5 md:grid-cols-2 xl:grid-cols-3"
         }
       >
         {visibleClasses.map((classRecord) => {
