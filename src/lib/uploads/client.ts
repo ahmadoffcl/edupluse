@@ -63,5 +63,6 @@ export async function signAndUploadFile({
     name: signed.upload.name,
     size: signed.upload.size,
     mimeType: signed.upload.mimeType,
+    publicUrl: signed.upload.publicUrl ?? null,
   };
 }

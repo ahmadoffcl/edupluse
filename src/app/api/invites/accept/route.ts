@@ -204,15 +204,62 @@ export async function POST(request: Request) {
     );
   }
 
+  let joinedClassId: string | null = null;
+  let joinedClassName: string | null = null;
+
   if (invite.class_id && invite.role === "student") {
-    await supabase.from("enrollments").upsert(
+    let enrollment = await supabase.from("enrollments").upsert(
       {
         org_id: invite.org_id,
         class_id: invite.class_id,
         student_id: profile.id,
+        status: "enrolled",
+        enrolled_at: new Date().toISOString(),
       },
       { onConflict: "class_id,student_id" },
     );
+
+    if (
+      enrollment.error &&
+      (isMissingColumn(enrollment.error, "status") ||
+        isMissingColumn(enrollment.error, "enrolled_at"))
+    ) {
+      enrollment = await supabase.from("enrollments").upsert(
+        {
+          org_id: invite.org_id,
+          class_id: invite.class_id,
+          student_id: profile.id,
+        },
+        { onConflict: "class_id,student_id" },
+      );
+    }
+
+    if (enrollment.error) {
+      return NextResponse.json(
+        { ok: false, error: "Unable to join the invited class." },
+        { status: 500 },
+      );
+    }
+
+    const classRelation = Array.isArray(invite.classes)
+      ? invite.classes[0]
+      : invite.classes;
+    const classRecord =
+      classRelation && typeof classRelation === "object"
+        ? (classRelation as { name?: string | null })
+        : null;
+    joinedClassId = invite.class_id as string;
+    joinedClassName = classRecord?.name ?? "your class";
+
+    await supabase.from("notifications").insert({
+      org_id: invite.org_id,
+      recipient_id: profile.id,
+      title: "Class joined",
+      body: `You joined ${joinedClassName}. Open it to see classwork, posts, and materials.`,
+      kind: "class_joined",
+      action_url: `/student/classes/${joinedClassId}`,
+      metadata: { classId: joinedClassId, inviteId: invite.id },
+    });
   }
 
   let pendingTeacherApproval = false;
@@ -329,6 +376,8 @@ export async function POST(request: Request) {
       typeof profile.avatar_url === "string" ? profile.avatar_url : null,
     onboardingCompleted: Boolean(profile.onboarding_completed_at),
     pendingApproval: pendingTeacherApproval,
+    joinedClassId,
+    joinedClassName,
   });
   response.cookies.set(sessionCookieName, token, sessionCookieOptions());
 

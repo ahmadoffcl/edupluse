@@ -499,7 +499,7 @@ async function resolveMembership({
   };
 }
 
-async function profileAvatarUrl(
+async function profileSessionIdentity(
   supabase: SupabaseServiceClient | null,
   uid: string,
 ) {
@@ -507,16 +507,44 @@ async function profileAvatarUrl(
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("avatar_url")
+    .select("display_name,avatar_url,onboarding_completed_at")
     .eq("firebase_uid", uid)
     .maybeSingle();
 
   if (error) {
-    if (isMissingProfileColumn(error, "avatar_url")) return null;
+    if (
+      isMissingProfileColumn(error, "avatar_url") ||
+      isMissingProfileColumn(error, "onboarding_completed_at")
+    ) {
+      const fallback = await supabase
+        .from("profiles")
+        .select("display_name")
+        .eq("firebase_uid", uid)
+        .maybeSingle();
+
+      if (fallback.error) throw fallback.error;
+      return fallback.data
+        ? {
+            displayName:
+              typeof fallback.data.display_name === "string"
+                ? fallback.data.display_name
+                : null,
+            avatarUrl: null,
+            onboardingCompleted: null,
+          }
+        : null;
+    }
     throw error;
   }
 
-  return typeof data?.avatar_url === "string" ? data.avatar_url : null;
+  return data
+    ? {
+        displayName:
+          typeof data.display_name === "string" ? data.display_name : null,
+        avatarUrl: typeof data.avatar_url === "string" ? data.avatar_url : null,
+        onboardingCompleted: Boolean(data.onboarding_completed_at),
+      }
+    : null;
 }
 
 async function recordDeviceSession({
@@ -593,6 +621,7 @@ export async function POST(request: Request) {
       orgId: membership.orgId,
       orgName: membership.orgName,
       deviceSessionId: body.deviceSessionId,
+      photoURL: membership.avatarUrl,
       onboardingCompleted: membership.onboardingCompleted,
     });
 
@@ -629,7 +658,7 @@ export async function GET() {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
-  const avatarUrl = await profileAvatarUrl(
+  const identity = await profileSessionIdentity(
     getSupabaseServiceClient(),
     session.uid,
   ).catch(() => null);
@@ -639,14 +668,15 @@ export async function GET() {
     user: {
       uid: session.uid,
       email: session.email,
-      displayName: session.displayName,
-      photoURL: avatarUrl ?? session.photoURL ?? null,
+      displayName: identity?.displayName ?? session.displayName,
+      photoURL: identity?.avatarUrl ?? session.photoURL ?? null,
       emailVerified: true,
       role: session.role,
       orgId: session.orgId,
       orgName: session.orgName,
       deviceSessionId: session.deviceSessionId,
-      onboardingCompleted: session.onboardingCompleted ?? true,
+      onboardingCompleted:
+        identity?.onboardingCompleted ?? session.onboardingCompleted ?? true,
     },
   });
 }

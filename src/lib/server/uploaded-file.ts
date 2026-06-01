@@ -7,7 +7,9 @@ export function parseUploadedFileMetadata(value: FormDataEntryValue | null) {
   try {
     const parsed = JSON.parse(value) as Partial<UploadedFileMetadata>;
     if (
-      (parsed.bucket === "resources" || parsed.bucket === "submissions") &&
+      (parsed.bucket === "avatars" ||
+        parsed.bucket === "resources" ||
+        parsed.bucket === "submissions") &&
       typeof parsed.path === "string" &&
       typeof parsed.name === "string" &&
       typeof parsed.mimeType === "string" &&

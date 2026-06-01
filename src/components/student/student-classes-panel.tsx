@@ -236,7 +236,7 @@ export function StudentClassesPanel({
       ) : null}
 
       {!compact ? (
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
             ["Enrolled", statusCounts.enrolled, "default"],
             ["Suggested", statusCounts.suggested, "success"],
@@ -270,7 +270,7 @@ export function StudentClassesPanel({
       <div
         className={
           compact
-            ? "-mx-2 flex snap-x gap-4 overflow-x-auto px-2 pb-3"
+            ? "-mx-2 grid auto-cols-[minmax(250px,84vw)] grid-flow-col snap-x gap-4 overflow-x-auto px-2 pb-3 sm:auto-cols-[330px]"
             : "grid gap-4 md:grid-cols-2 xl:grid-cols-3"
         }
       >
@@ -362,7 +362,7 @@ export function StudentClassesPanel({
               }
               className={
                 compact
-                  ? "min-w-[285px] snap-start sm:min-w-[330px]"
+                  ? "w-full snap-start"
                   : undefined
               }
             />

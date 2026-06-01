@@ -17,9 +17,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
 import { useAuth } from "@/components/providers/auth-provider";
+import {
+  UsernameAvailabilityNote,
+  useUsernameAvailability,
+} from "@/components/profile/username-availability";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 import type { ProfileSettingsData } from "@/lib/dashboard/profile-settings";
 import { initials } from "@/lib/utils";
+import { normalizeUsername } from "@/lib/username";
 
 export function ProfileSettingsPanel({
   data,
@@ -42,6 +47,10 @@ export function ProfileSettingsPanel({
   const [avatarBusy, setAvatarBusy] = useState(false);
   const { updateUserProfile } = useAuth();
   const router = useRouter();
+  const usernameCheck = useUsernameAvailability(form.username, "current");
+  const usernameIsFilled = normalizeUsername(form.username).length > 0;
+  const usernameBlocked =
+    usernameIsFilled && (!usernameCheck.isAvailable || usernameCheck.isChecking);
 
   function update<K extends keyof typeof form>(
     key: K,
@@ -51,6 +60,11 @@ export function ProfileSettingsPanel({
   }
 
   async function save() {
+    if (usernameBlocked) {
+      toast.error("Choose an available username first.");
+      return;
+    }
+
     setBusy(true);
 
     try {
@@ -223,6 +237,10 @@ export function ProfileSettingsPanel({
                 value={form.username}
                 onChange={(event) => update("username", event.target.value)}
               />
+              <UsernameAvailabilityNote
+                status={usernameCheck.status}
+                message={usernameCheck.message}
+              />
             </label>
             <label className="space-y-2">
               <span className="text-sm font-semibold">Phone</span>
@@ -293,7 +311,11 @@ export function ProfileSettingsPanel({
         </Card>
 
         <div className="flex justify-end">
-          <Button disabled={busy} variant="premium" onClick={save}>
+          <Button
+            disabled={busy || usernameBlocked}
+            variant="premium"
+            onClick={save}
+          >
             <Save /> {busy ? "Saving..." : "Save settings"}
           </Button>
         </div>

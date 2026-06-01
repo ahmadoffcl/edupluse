@@ -261,7 +261,12 @@ function ClassEditForm({ classRecord }: { classRecord: TeacherClassOption }) {
     }
   }
 
-  async function archiveClass() {
+  async function deleteClass() {
+    const confirmed = window.confirm(
+      "Permanently delete this class with its materials, assignments, submissions, and posts?",
+    );
+    if (!confirmed) return;
+
     setBusy(true);
     try {
       await mutate(
@@ -270,12 +275,12 @@ function ClassEditForm({ classRecord }: { classRecord: TeacherClassOption }) {
             method: "DELETE",
           }),
         {
-          success: "Class archived.",
-          fallbackError: "Unable to archive class.",
+          success: "Class deleted.",
+          fallbackError: "Unable to delete class.",
         },
       );
     } catch (error) {
-      toast.error("Archive failed", {
+      toast.error("Delete failed", {
         description: error instanceof Error ? error.message : "Try again.",
       });
     } finally {
@@ -300,9 +305,9 @@ function ClassEditForm({ classRecord }: { classRecord: TeacherClassOption }) {
           size="sm"
           variant="outline"
           disabled={busy}
-          onClick={archiveClass}
+          onClick={deleteClass}
         >
-          <Archive /> Archive
+          <Trash2 /> Delete
         </Button>
       </div>
       <div className="grid gap-3 md:grid-cols-2">

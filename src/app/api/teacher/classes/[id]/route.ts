@@ -11,6 +11,15 @@ export const runtime = "nodejs";
 
 const patchSchema = z.object({
   name: z.string().trim().min(2).max(160).optional(),
+  description: z.string().trim().max(1200).optional().nullable(),
+  bannerUrl: z
+    .string()
+    .trim()
+    .url()
+    .max(1000)
+    .optional()
+    .nullable()
+    .or(z.literal("")),
   gradeLevel: z.string().trim().max(80).optional().nullable(),
   section: z.string().trim().max(80).optional().nullable(),
   batch: z.string().trim().max(80).optional().nullable(),
@@ -21,6 +30,58 @@ const patchSchema = z.object({
   subjectName: z.string().trim().max(120).optional().nullable(),
   subjectCode: z.string().trim().max(40).optional().nullable(),
 });
+
+function isMissingRelation(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+
+  return (
+    candidate.code === "42P01" ||
+    candidate.code === "PGRST205" ||
+    Boolean(
+      candidate.message?.includes("schema cache") ||
+        candidate.message?.includes("does not exist"),
+    )
+  );
+}
+
+function isMissingColumn(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+
+  return (
+    candidate.code === "42703" ||
+    candidate.code === "PGRST204" ||
+    Boolean(
+      candidate.message?.includes("schema cache") ||
+        candidate.message?.includes("does not exist"),
+    )
+  );
+}
+
+function collectAttachmentPaths(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) =>
+      item && typeof item === "object"
+        ? (item as { path?: unknown }).path
+        : null,
+    )
+    .filter(
+      (path): path is string => typeof path === "string" && path.length > 0,
+    );
+}
+
+async function safeDelete(query: PromiseLike<{ error: unknown | null }>) {
+  const result = await query;
+  if (
+    result.error &&
+    !isMissingRelation(result.error) &&
+    !isMissingColumn(result.error)
+  ) {
+    throw result.error;
+  }
+}
 
 export async function GET(
   _request: Request,
@@ -74,6 +135,12 @@ export async function PATCH(
   const body = patchSchema.parse(await request.json());
   const patch = {
     ...(body.name !== undefined ? { name: body.name } : {}),
+    ...(body.description !== undefined
+      ? { description: body.description || null }
+      : {}),
+    ...(body.bannerUrl !== undefined
+      ? { banner_url: body.bannerUrl || null }
+      : {}),
     ...(body.gradeLevel !== undefined
       ? { grade_level: body.gradeLevel || null }
       : {}),
@@ -164,26 +231,124 @@ export async function DELETE(
   const access = await requireClassAccess(context, id);
   if (isWorkflowResponse(access)) return access;
 
+  const [{ data: resourceRows }, { data: assignmentRows }] =
+    await Promise.all([
+      context.supabase
+        .from("resources")
+        .select("file_path")
+        .eq("org_id", context.session.orgId)
+        .eq("class_id", id),
+      context.supabase
+        .from("assignments")
+        .select("id,attachments")
+        .eq("org_id", context.session.orgId)
+        .eq("class_id", id),
+    ]);
+
+  const assignmentIds = ((assignmentRows ?? []) as Array<{ id: string }>).map(
+    (row) => row.id,
+  );
+  const resourcePaths = ((resourceRows ?? []) as Array<{
+    file_path?: string | null;
+  }>)
+    .map((row) => row.file_path)
+    .filter(
+      (path): path is string => typeof path === "string" && path.length > 0,
+    );
+  const attachmentPaths = ((assignmentRows ?? []) as Array<{
+    attachments?: unknown;
+  }>).flatMap((row) => collectAttachmentPaths(row.attachments));
+  let submissionPaths: string[] = [];
+
+  if (assignmentIds.length > 0) {
+    const { data: submissionRows } = await context.supabase
+      .from("submissions")
+      .select("file_path")
+      .eq("org_id", context.session.orgId)
+      .in("assignment_id", assignmentIds);
+
+    submissionPaths = ((submissionRows ?? []) as Array<{
+      file_path?: string | null;
+    }>)
+      .map((row) => row.file_path)
+      .filter(
+        (path): path is string => typeof path === "string" && path.length > 0,
+      );
+  }
+
+  const orgPath = `${context.session.orgId}/`;
+  const resourceStoragePaths = Array.from(
+    new Set([...resourcePaths, ...attachmentPaths].filter((path) => path.startsWith(orgPath))),
+  );
+  const submissionStoragePaths = Array.from(
+    new Set(submissionPaths.filter((path) => path.startsWith(orgPath))),
+  );
+
+  if (resourceStoragePaths.length > 0) {
+    const { error: storageError } = await context.supabase.storage
+      .from("resources")
+      .remove(resourceStoragePaths);
+    if (storageError) {
+      console.warn("Class resource file cleanup skipped", storageError.message);
+    }
+  }
+
+  if (submissionStoragePaths.length > 0) {
+    const { error: storageError } = await context.supabase.storage
+      .from("submissions")
+      .remove(submissionStoragePaths);
+    if (storageError) {
+      console.warn(
+        "Class submission file cleanup skipped",
+        storageError.message,
+      );
+    }
+  }
+
+  try {
+    await safeDelete(
+      context.supabase
+        .from("invites")
+        .delete()
+        .eq("org_id", context.session.orgId)
+        .eq("class_id", id),
+    );
+    await safeDelete(
+      context.supabase
+        .from("notifications")
+        .delete()
+        .eq("org_id", context.session.orgId)
+        .like("action_url", `%/classes/${id}%`),
+    );
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "Unable to clear class invite or notification data." },
+      { status: 500 },
+    );
+  }
+
   const { error } = await context.supabase
     .from("classes")
-    .update({
-      archived_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
+    .delete()
     .eq("id", id)
     .eq("org_id", context.session.orgId);
 
   if (error) {
     return NextResponse.json(
-      { ok: false, error: "Unable to archive class." },
+      { ok: false, error: "Unable to delete class." },
       { status: 500 },
     );
   }
 
   await writeAuditLog(context, {
-    action: "teacher.class.archived",
+    action: "teacher.class.deleted",
     entity: "classes",
     entityId: id,
+    metadata: {
+      assignmentCount: assignmentIds.length,
+      resourceFileCount: resourceStoragePaths.length,
+      submissionFileCount: submissionStoragePaths.length,
+    },
   });
 
   return NextResponse.json({ ok: true });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppSession } from "@/lib/auth/server";
+import { ensureSessionProfile } from "@/lib/server/workflow-auth";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -13,10 +14,6 @@ const allowedTypes = new Map([
 
 const maxAvatarBytes = 5 * 1024 * 1024;
 
-type SupabaseServiceClient = NonNullable<
-  ReturnType<typeof getSupabaseServiceClient>
->;
-
 function isMissingStorage(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const candidate = error as { statusCode?: string; message?: string };
@@ -24,17 +21,6 @@ function isMissingStorage(error: unknown) {
     candidate.statusCode === "404" ||
     Boolean(candidate.message?.toLowerCase().includes("bucket"))
   );
-}
-
-async function currentProfileId(supabase: SupabaseServiceClient, uid: string) {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("firebase_uid", uid)
-    .maybeSingle();
-
-  if (error) throw error;
-  return typeof data?.id === "string" ? data.id : null;
 }
 
 export async function POST(request: Request) {
@@ -77,7 +63,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const profileId = await currentProfileId(supabase, session.uid);
+  const profileId = await ensureSessionProfile(supabase, session);
   if (!profileId) {
     return NextResponse.json(
       { error: "Profile is not ready yet. Sign out and sign in again." },

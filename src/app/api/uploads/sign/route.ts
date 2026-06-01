@@ -10,6 +10,7 @@ import {
 } from "@/lib/server/workflow-auth";
 import {
   safeStorageName,
+  validateClassBannerUpload,
   validateTeacherUpload,
 } from "@/lib/server/upload-validation";
 import type { UploadedFileMetadata } from "@/lib/uploads/types";
@@ -18,6 +19,7 @@ export const runtime = "nodejs";
 
 const schema = z.object({
   purpose: z.enum([
+    "class_banner",
     "teacher_resource",
     "assignment_attachment",
     "student_submission",
@@ -94,11 +96,18 @@ export async function POST(request: Request) {
   }
 
   const body = parsed.data;
-  const validation = validateTeacherUpload({
-    name: body.fileName,
-    type: body.mimeType,
-    size: body.fileSize,
-  });
+  const validation =
+    body.purpose === "class_banner"
+      ? validateClassBannerUpload({
+          name: body.fileName,
+          type: body.mimeType,
+          size: body.fileSize,
+        })
+      : validateTeacherUpload({
+          name: body.fileName,
+          type: body.mimeType,
+          size: body.fileSize,
+        });
   if (!validation.ok) {
     return NextResponse.json(
       { ok: false, error: validation.error },
@@ -107,7 +116,9 @@ export async function POST(request: Request) {
   }
 
   if (
-    ["teacher_resource", "assignment_attachment"].includes(body.purpose) &&
+    ["class_banner", "teacher_resource", "assignment_attachment"].includes(
+      body.purpose,
+    ) &&
     !isTeacherRole(context.session.role)
   ) {
     return NextResponse.json(
@@ -128,7 +139,8 @@ export async function POST(request: Request) {
   }
 
   if (
-    (body.purpose === "teacher_resource" ||
+    (body.purpose === "class_banner" ||
+      body.purpose === "teacher_resource" ||
       body.purpose === "assignment_attachment") &&
     body.classId
   ) {
@@ -168,9 +180,15 @@ export async function POST(request: Request) {
 
   const safeName = safeStorageName(body.fileName);
   const bucket: UploadedFileMetadata["bucket"] =
-    body.purpose === "student_submission" ? "submissions" : "resources";
+    body.purpose === "student_submission"
+      ? "submissions"
+      : body.purpose === "class_banner"
+        ? "avatars"
+        : "resources";
   const prefix =
-    body.purpose === "assignment_attachment"
+    body.purpose === "class_banner"
+      ? "class-banners"
+      : body.purpose === "assignment_attachment"
       ? "assignments"
       : body.purpose === "student_note"
         ? "student-notes"
@@ -193,6 +211,12 @@ export async function POST(request: Request) {
     );
   }
 
+  const publicUrl =
+    body.purpose === "class_banner"
+      ? context.supabase.storage.from(bucket).getPublicUrl(data.path ?? filePath)
+          .data.publicUrl
+      : null;
+
   return NextResponse.json({
     ok: true,
     upload: {
@@ -202,6 +226,7 @@ export async function POST(request: Request) {
       size: body.fileSize,
       mimeType: body.mimeType,
       token: data.token,
+      publicUrl,
     },
   });
 }

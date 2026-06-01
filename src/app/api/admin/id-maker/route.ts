@@ -4,8 +4,10 @@ import { z } from "zod";
 import { getCurrentAppSession } from "@/lib/auth/server";
 import { sendWelcomeEmail } from "@/lib/email/server";
 import { getFirebaseAdminAuth } from "@/lib/firebase/admin";
+import { ensureSessionProfile } from "@/lib/server/workflow-auth";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import type { Role } from "@/lib/types";
+import { isValidUsername, normalizeUsername } from "@/lib/username";
 
 export const runtime = "nodejs";
 
@@ -24,6 +26,14 @@ const accountSchema = z.object({
     .regex(/^[0-9+\-() ]*$/)
     .optional()
     .transform((value) => value || null),
+  username: z
+    .string()
+    .trim()
+    .max(33)
+    .transform((value) => normalizeUsername(value))
+    .refine((value) => isValidUsername(value), {
+      message: "Username must be 3-32 letters, numbers, dots, or underscores.",
+    }),
   password: z.string().min(6).max(128),
 });
 
@@ -65,6 +75,7 @@ function isMissingProfileColumn(error: unknown, column: string) {
 function isMissingOptionalProfileColumn(error: unknown) {
   return (
     isMissingProfileColumn(error, "phone") ||
+    isMissingProfileColumn(error, "username") ||
     isMissingProfileColumn(error, "onboarding_completed_at")
   );
 }
@@ -85,16 +96,6 @@ async function ensureOrganization(
   );
 
   if (error) throw error;
-}
-
-async function actorProfileId(supabase: SupabaseServiceClient, uid: string) {
-  const { data } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("firebase_uid", uid)
-    .maybeSingle();
-
-  return typeof data?.id === "string" ? data.id : null;
 }
 
 async function createOrUpdateFirebaseUser(
@@ -147,6 +148,7 @@ async function upsertProfile({
     firebase_uid: firebaseUid,
     email: account.email,
     display_name: account.displayName,
+    username: account.username,
     phone: account.phone,
     onboarding_completed_at: now,
   };
@@ -255,7 +257,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Each account needs a valid name, email, phone number, and password of at least 6 characters.",
+          "Each account needs a valid name, email, username, phone number, and password of at least 6 characters.",
       },
       { status: 400 },
     );
@@ -265,7 +267,7 @@ export async function POST(request: Request) {
 
   try {
     await ensureOrganization(supabase, session);
-    actorId = await actorProfileId(supabase, session.uid);
+    actorId = await ensureSessionProfile(supabase, session);
   } catch {
     return NextResponse.json(
       { error: "Workspace tables are not ready for account creation." },
@@ -274,6 +276,7 @@ export async function POST(request: Request) {
   }
 
   const seenEmails = new Set<string>();
+  const seenUsernames = new Set<string>();
   const results = [];
 
   for (const account of parsedBody.data.users) {
@@ -291,8 +294,36 @@ export async function POST(request: Request) {
 
     seenEmails.add(account.email);
 
+    if (seenUsernames.has(account.username)) {
+      results.push({
+        ok: false,
+        email: account.email,
+        displayName: account.displayName,
+        role: account.role,
+        status: "failed",
+        message: "Duplicate username in this batch.",
+      });
+      continue;
+    }
+
+    seenUsernames.add(account.username);
+
     try {
       const { user, created } = await createOrUpdateFirebaseUser(account);
+      const { data: usernameOwner, error: usernameError } = await supabase
+        .from("profiles")
+        .select("id,firebase_uid")
+        .eq("username", account.username)
+        .maybeSingle();
+
+      if (usernameError && !isMissingProfileColumn(usernameError, "username")) {
+        throw new Error("Unable to check username.");
+      }
+
+      if (usernameOwner && usernameOwner.firebase_uid !== user.uid) {
+        throw new Error(`@${account.username} is already taken.`);
+      }
+
       const profileId = await upsertProfile({
         supabase,
         account,

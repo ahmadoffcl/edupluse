@@ -26,6 +26,7 @@ export default async function TeacherClassDetailPage({
     tab === "classwork" ||
     tab === "materials" ||
     tab === "people" ||
+    tab === "settings" ||
     tab === "stream"
       ? tab
       : "stream";

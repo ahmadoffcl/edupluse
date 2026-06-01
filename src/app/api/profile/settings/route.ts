@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentAppSession } from "@/lib/auth/server";
+import { ensureSessionProfile } from "@/lib/server/workflow-auth";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
+import { isValidUsername, normalizeUsername } from "@/lib/username";
 
 export const runtime = "nodejs";
 
@@ -10,10 +12,13 @@ const schema = z.object({
   username: z
     .string()
     .trim()
-    .max(32)
-    .regex(/^@?[a-zA-Z0-9._]*$/)
+    .max(33)
     .optional()
-    .transform((value) => value?.replace(/^@+/, "").toLowerCase() || null),
+    .or(z.literal(""))
+    .transform((value) => normalizeUsername(value) || null)
+    .refine((value) => !value || isValidUsername(value), {
+      message: "Username must be 3-32 letters, numbers, dots, or underscores.",
+    }),
   phone: z
     .string()
     .trim()
@@ -30,18 +35,17 @@ const schema = z.object({
   avatarUrl: z
     .string()
     .trim()
-    .url()
+    .max(2048)
     .optional()
     .or(z.literal(""))
-    .transform((value) => value || null),
+    .transform((value) => value || null)
+    .refine((value) => !value || /^https?:\/\//i.test(value), {
+      message: "Use a normal http or https image URL, or upload a photo.",
+    }),
   notifications: z.boolean().default(true),
   weeklyDigest: z.boolean().default(true),
   publicLeaderboard: z.boolean().default(true),
 });
-
-type SupabaseServiceClient = NonNullable<
-  ReturnType<typeof getSupabaseServiceClient>
->;
 
 function isMissingProfileColumn(error: unknown) {
   if (!error || typeof error !== "object") return false;
@@ -56,17 +60,6 @@ function isMissingProfileColumn(error: unknown) {
       candidate.message?.includes("does not exist"),
     )
   );
-}
-
-async function currentProfileId(supabase: SupabaseServiceClient, uid: string) {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("firebase_uid", uid)
-    .maybeSingle();
-
-  if (error) throw error;
-  return typeof data?.id === "string" ? data.id : null;
 }
 
 export async function PATCH(request: Request) {
@@ -93,7 +86,7 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const profileId = await currentProfileId(supabase, session.uid);
+  const profileId = await ensureSessionProfile(supabase, session);
 
   if (!profileId) {
     return NextResponse.json(

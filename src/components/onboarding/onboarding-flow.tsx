@@ -19,6 +19,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/components/providers/auth-provider";
+import {
+  UsernameAvailabilityNote,
+  useUsernameAvailability,
+} from "@/components/profile/username-availability";
 import { markOnboardingComplete } from "@/lib/onboarding-storage";
 import { cn } from "@/lib/utils";
 
@@ -73,6 +77,13 @@ export function OnboardingFlow({
   );
   const step = steps[active];
   const isLast = active === steps.length - 1;
+  const usernameCheck = useUsernameAvailability(valueFor("Username"), "current");
+  const usernameIsRequiredOnStep = step.fields.some(
+    (field) => field.label === "Username",
+  );
+  const usernameBlocked =
+    usernameIsRequiredOnStep &&
+    (!usernameCheck.isAvailable || usernameCheck.isChecking);
   const classSearch = valueFor("Search classes").trim().toLowerCase();
   const filteredClassOptions = classOptions
     .filter((classRecord) => classRecord.enrollmentStatus !== "enrolled")
@@ -105,6 +116,11 @@ export function OnboardingFlow({
   }
 
   async function finish() {
+    if (usernameBlocked) {
+      toast.error("Choose an available username first.");
+      return;
+    }
+
     setBusy(true);
 
     try {
@@ -223,21 +239,32 @@ export function OnboardingFlow({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              {step.fields.map((field) => (
-                <label key={field.label} className="space-y-2">
-                  <span className="text-sm font-semibold">{field.label}</span>
-                  <Input
-                    placeholder={field.placeholder}
-                    value={values[fieldKey(step.title, field.label)] ?? ""}
-                    onChange={(event) =>
-                      setValues((current) => ({
-                        ...current,
-                        [fieldKey(step.title, field.label)]: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              ))}
+              {step.fields.map((field) => {
+                const key = fieldKey(step.title, field.label);
+                return (
+                  <label key={field.label} className="space-y-2">
+                    <span className="text-sm font-semibold">
+                      {field.label}
+                    </span>
+                    <Input
+                      placeholder={field.placeholder}
+                      value={values[key] ?? ""}
+                      onChange={(event) =>
+                        setValues((current) => ({
+                          ...current,
+                          [key]: event.target.value,
+                        }))
+                      }
+                    />
+                    {field.label === "Username" ? (
+                      <UsernameAvailabilityNote
+                        status={usernameCheck.status}
+                        message={usernameCheck.message}
+                      />
+                    ) : null}
+                  </label>
+                );
+              })}
             </div>
 
             {step.emptyTitle &&
@@ -371,7 +398,7 @@ export function OnboardingFlow({
                 <Button
                   type="button"
                   variant="premium"
-                  disabled={busy}
+                  disabled={busy || usernameBlocked}
                   onClick={finish}
                 >
                   Finish setup <ArrowRight />

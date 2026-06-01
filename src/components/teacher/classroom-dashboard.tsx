@@ -22,6 +22,7 @@ import {
   Save,
   Search,
   Send,
+  Settings,
   Sparkles,
   Trash2,
   UploadCloud,
@@ -59,6 +60,13 @@ type ClassFormState = {
   description: string;
   bannerUrl: string;
 };
+
+type TeacherClassTab =
+  | "stream"
+  | "classwork"
+  | "materials"
+  | "people"
+  | "settings";
 
 const emptyClassForm: ClassFormState = {
   name: "",
@@ -246,6 +254,7 @@ export function ClassCreationWizard({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [bannerBusy, setBannerBusy] = useState(false);
 
   const filteredStudents = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -306,6 +315,32 @@ export function ClassCreationWizard({
       });
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function uploadBanner(file: File | null) {
+    if (!file) return;
+
+    setBannerBusy(true);
+    try {
+      const uploaded = await signAndUploadFile({
+        purpose: "class_banner",
+        file,
+      });
+      if (!uploaded.publicUrl) {
+        throw new Error("Banner uploaded, but no public URL was returned.");
+      }
+      setForm((current) => ({
+        ...current,
+        bannerUrl: uploaded.publicUrl ?? "",
+      }));
+      toast.success("Banner image added.");
+    } catch (error) {
+      toast.error("Banner upload failed", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setBannerBusy(false);
     }
   }
 
@@ -383,6 +418,21 @@ export function ClassCreationWizard({
                   placeholder="Banner image URL"
                 />
               </div>
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold transition hover:bg-muted">
+                <UploadCloud className="size-4" />
+                {bannerBusy ? "Uploading banner..." : "Upload optimized banner"}
+                <input
+                  className="sr-only"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={bannerBusy}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0] ?? null;
+                    void uploadBanner(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
               <div className="flex justify-end">
                 <Button
                   type="button"
@@ -815,11 +865,18 @@ function ClassDetailRow({
               {classRecord.description || "No description added yet."}
             </p>
           </div>
-          <Button asChild size="sm" variant="outline">
-            <Link href={`/teacher/classes/${classRecord.id}`}>
-              Open <ChevronRight />
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/teacher/classes/${classRecord.id}`}>
+                Open <ChevronRight />
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/teacher/classes/${classRecord.id}?tab=settings`}>
+                <Settings /> Settings
+              </Link>
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -1054,16 +1111,17 @@ export function TeacherClassroomDetail({
 }: {
   data: TeacherWorkflowData;
   classRecord: TeacherClassOption;
-  initialTab?: "stream" | "classwork" | "materials" | "people";
+  initialTab?: TeacherClassTab;
   smartLearningEnabled?: boolean;
 }) {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
-  const [tab, setTab] = useState<
-    "stream" | "classwork" | "materials" | "people"
-  >(initialTab);
+  const [tab, setTab] = useState<TeacherClassTab>(initialTab);
   const [busy, setBusy] = useState<string | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [settingsBannerUrl, setSettingsBannerUrl] = useState(
+    classRecord.bannerUrl ?? "",
+  );
   const students = classStudents(data, classRecord.id);
   const assignments = classAssignments(data, classRecord.id);
   const resources = classResources(data, classRecord.id);
@@ -1073,6 +1131,7 @@ export function TeacherClassroomDetail({
     { value: "classwork", label: "Classwork", icon: ClipboardList },
     { value: "materials", label: "Materials", icon: FileText },
     { value: "people", label: "People", icon: UsersRound },
+    { value: "settings", label: "Settings", icon: Settings },
   ] as const;
   const summaryStats = [
     ["Students", students.length, UsersRound, "people" as const],
@@ -1311,6 +1370,89 @@ export function TeacherClassroomDetail({
       router.refresh();
     } catch (error) {
       showFormError("Replace failed", error);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitClassSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setBusy("class-settings");
+    try {
+      await parseResponse(
+        await fetch(`/api/teacher/classes/${classRecord.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: String(form.get("name") ?? ""),
+            description: String(form.get("description") ?? "") || null,
+            bannerUrl: settingsBannerUrl || null,
+            gradeLevel: String(form.get("gradeLevel") ?? "") || null,
+            section: String(form.get("section") ?? "") || null,
+            batch: String(form.get("batch") ?? "") || null,
+            deliveryMode: String(form.get("deliveryMode") ?? "hybrid"),
+            term: String(form.get("term") ?? "") || null,
+            capacity: String(form.get("capacity") ?? "")
+              ? Number(form.get("capacity"))
+              : null,
+            scheduleNote: String(form.get("scheduleNote") ?? "") || null,
+            subjectName: String(form.get("subjectName") ?? "") || null,
+            subjectCode: String(form.get("subjectCode") ?? "") || null,
+          }),
+        }),
+        "Unable to save class settings.",
+      );
+      toast.success("Class settings saved.");
+      router.refresh();
+    } catch (error) {
+      showFormError("Class settings failed", error);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function uploadClassSettingsBanner(file: File | null) {
+    if (!file) return;
+
+    setBusy("class-banner");
+    try {
+      const uploaded = await signAndUploadFile({
+        purpose: "class_banner",
+        file,
+        classId: classRecord.id,
+      });
+      if (!uploaded.publicUrl) {
+        throw new Error("Banner uploaded, but no public URL was returned.");
+      }
+      setSettingsBannerUrl(uploaded.publicUrl);
+      toast.success("Banner image ready.");
+    } catch (error) {
+      showFormError("Banner upload failed", error);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteClass() {
+    const confirmed = window.confirm(
+      "Permanently delete this class, including materials, assignments, submissions, posts, and student links?",
+    );
+    if (!confirmed) return;
+
+    setBusy("delete-class");
+    try {
+      await parseResponse(
+        await fetch(`/api/teacher/classes/${classRecord.id}`, {
+          method: "DELETE",
+        }),
+        "Unable to delete this class.",
+      );
+      toast.success("Class deleted.");
+      router.push("/teacher");
+      router.refresh();
+    } catch (error) {
+      showFormError("Delete failed", error);
     } finally {
       setBusy(null);
     }
@@ -1819,6 +1961,167 @@ export function TeacherClassroomDetail({
                     );
                   })
                 )}
+              </div>
+            </section>
+          ) : null}
+
+          {tab === "settings" ? (
+            <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="size-5 text-primary" />
+                    Class settings
+                  </CardTitle>
+                  <CardDescription>
+                    Update the classroom identity, banner, schedule, and subject.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form
+                    className="grid gap-3 md:grid-cols-2"
+                    onSubmit={submitClassSettings}
+                  >
+                    <Input
+                      className="md:col-span-2"
+                      name="name"
+                      defaultValue={classRecord.name}
+                      placeholder="Class name"
+                      required
+                    />
+                    <Input
+                      name="section"
+                      defaultValue={classRecord.section ?? ""}
+                      placeholder="Section"
+                    />
+                    <Input
+                      name="gradeLevel"
+                      defaultValue={classRecord.gradeLevel ?? ""}
+                      placeholder="Program or grade"
+                    />
+                    <Input
+                      name="batch"
+                      defaultValue={classRecord.batch ?? ""}
+                      placeholder="Batch"
+                    />
+                    <Input
+                      name="term"
+                      defaultValue={classRecord.term ?? ""}
+                      placeholder="Term"
+                    />
+                    <select
+                      name="deliveryMode"
+                      defaultValue={classRecord.deliveryMode}
+                      className="h-11 rounded-full border border-border bg-background px-4 text-sm outline-none"
+                    >
+                      <option value="physical">Physical</option>
+                      <option value="online">Online</option>
+                      <option value="hybrid">Hybrid</option>
+                    </select>
+                    <Input
+                      name="capacity"
+                      type="number"
+                      min={0}
+                      defaultValue={classRecord.capacity ?? ""}
+                      placeholder="Capacity"
+                    />
+                    <Input
+                      className="md:col-span-2"
+                      name="bannerUrl"
+                      value={settingsBannerUrl}
+                      onChange={(event) =>
+                        setSettingsBannerUrl(event.target.value)
+                      }
+                      placeholder="Banner image URL"
+                    />
+                    <label className="md:col-span-2 flex cursor-pointer items-center justify-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-sm font-semibold transition hover:bg-muted">
+                      <UploadCloud className="size-4" />
+                      {busy === "class-banner"
+                        ? "Uploading banner..."
+                        : "Upload class banner"}
+                      <input
+                        className="sr-only"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        disabled={busy === "class-banner"}
+                        onChange={(event) => {
+                          const file =
+                            event.currentTarget.files?.[0] ?? null;
+                          void uploadClassSettingsBanner(file);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    <Textarea
+                      className="md:col-span-2"
+                      name="description"
+                      defaultValue={classRecord.description ?? ""}
+                      placeholder="Class description"
+                    />
+                    <Textarea
+                      className="md:col-span-2"
+                      name="scheduleNote"
+                      defaultValue={classRecord.scheduleNote ?? ""}
+                      placeholder="Schedule note, venue, or weekly rhythm"
+                    />
+                    <Input
+                      name="subjectName"
+                      placeholder="Update or add subject"
+                    />
+                    <Input name="subjectCode" placeholder="Subject code" />
+                    <Button
+                      className="md:col-span-2"
+                      disabled={busy === "class-settings"}
+                    >
+                      <Save />{" "}
+                      {busy === "class-settings"
+                        ? "Saving..."
+                        : "Save class settings"}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-4 xl:sticky xl:top-28 xl:self-start">
+                <Card>
+                  <CardContent className="space-y-3 p-5">
+                    <p className="font-semibold">Class controls</p>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Use People to approve join requests and manage students.
+                      Delete only when you want to remove this classroom and
+                      its classwork permanently.
+                    </p>
+                    <div className="grid gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setTab("people")}
+                      >
+                        <UsersRound /> Manage people
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy === "delete-class"}
+                        onClick={deleteClass}
+                      >
+                        <Trash2 />
+                        {busy === "delete-class"
+                          ? "Deleting..."
+                          : "Delete class"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy === "leave-class"}
+                        onClick={leaveClass}
+                      >
+                        <UserMinus />
+                        {busy === "leave-class" ? "Removing..." : "Leave class"}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </section>
           ) : null}

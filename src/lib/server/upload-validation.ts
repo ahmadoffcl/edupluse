@@ -2,6 +2,12 @@ import "server-only";
 
 const maxDocumentSize = 25 * 1024 * 1024;
 const maxMediaSize = 150 * 1024 * 1024;
+const maxBannerSize = 6 * 1024 * 1024;
+const allowedBannerMimeTypes = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
 
 const allowedMimeTypes = new Set([
   "application/pdf",
@@ -87,6 +93,37 @@ export function validateTeacherUpload(file: {
       error: file.type.startsWith("video/")
         ? "Video uploads must be 150MB or smaller."
         : "Document uploads must be 25MB or smaller.",
+    };
+  }
+
+  return { ok: true as const };
+}
+
+export function validateClassBannerUpload(file: {
+  name: string;
+  type: string;
+  size: number;
+}) {
+  const extension = fileExtension(file.name);
+
+  if (!extension || blockedExtensions.has(extension)) {
+    return {
+      ok: false as const,
+      error: "This image type is not allowed for class banners.",
+    };
+  }
+
+  if (!allowedBannerMimeTypes.has(file.type)) {
+    return {
+      ok: false as const,
+      error: "Use a JPG, PNG, or WEBP banner image.",
+    };
+  }
+
+  if (file.size > maxBannerSize) {
+    return {
+      ok: false as const,
+      error: "Banner images must be 6MB or smaller.",
     };
   }
 

@@ -74,7 +74,7 @@ export function ClassroomCard({
     : "Class owner";
   const body = (
     <>
-      <div className="relative h-32 overflow-hidden bg-[#070a12] sm:h-40">
+      <div className="relative h-28 overflow-hidden bg-[#070a12] sm:h-40">
         {bannerUrl ? (
           <div
             className="absolute inset-0 bg-cover bg-center transition duration-700 group-hover:scale-105"
@@ -84,19 +84,19 @@ export function ClassroomCard({
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(56,189,248,0.48),transparent_30%),radial-gradient(circle_at_78%_12%,rgba(168,85,247,0.42),transparent_28%),radial-gradient(circle_at_56%_86%,rgba(251,191,36,0.25),transparent_31%),linear-gradient(135deg,#030712,#111827_48%,#18181b)]" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/28 to-black/10" />
-        <div className="absolute left-4 right-4 top-4 flex items-center justify-between gap-3">
-          <Badge className="border-white/15 bg-white/12 text-white">
+        <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2 sm:left-4 sm:right-4 sm:top-4">
+          <Badge className="max-w-[62%] truncate border-white/15 bg-white/12 text-white">
             {meta}
           </Badge>
           {deadline ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/28 px-3 py-1 text-xs font-semibold text-white backdrop-blur-md">
+            <span className="inline-flex min-w-0 items-center gap-1 rounded-full border border-white/15 bg-black/28 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md sm:gap-1.5 sm:px-3 sm:text-xs">
               <CalendarClock className="size-3.5" />
-              {deadline}
+              <span className="truncate">{deadline}</span>
             </span>
           ) : null}
         </div>
-        <div className="absolute bottom-4 left-4 right-4 text-white">
-          <h3 className="line-clamp-2 text-lg font-semibold tracking-tight sm:text-xl">
+        <div className="absolute bottom-3 left-3 right-3 text-white sm:bottom-4 sm:left-4 sm:right-4">
+          <h3 className="line-clamp-2 text-base font-semibold tracking-tight sm:text-xl">
             {name}
           </h3>
           <p className="mt-1 line-clamp-1 text-xs text-white/70">
@@ -133,13 +133,13 @@ export function ClassroomCard({
             return (
               <div
                 key={stat.label}
-                className="min-w-0 rounded-2xl border border-border bg-background/58 p-2 sm:p-3"
+                className="min-w-0 rounded-xl border border-border bg-background/58 p-1.5 sm:rounded-2xl sm:p-3"
               >
-                <Icon className="mb-2 size-4 text-primary" />
-                <p className="text-sm font-semibold sm:text-base">
+                <Icon className="mb-1 size-3.5 text-primary sm:mb-2 sm:size-4" />
+                <p className="truncate text-xs font-semibold sm:text-base">
                   {stat.value}
                 </p>
-                <p className="truncate text-[11px] text-muted-foreground">
+                <p className="truncate text-[10px] text-muted-foreground sm:text-[11px]">
                   {stat.label}
                 </p>
               </div>
@@ -163,12 +163,12 @@ export function ClassroomCard({
       {href ? (
         <Link
           href={href}
-          className="group flex h-full min-h-[270px] flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-card/86 shadow-[0_24px_70px_-45px_rgba(0,0,0,0.85)] ring-1 ring-border/70 backdrop-blur-xl transition sm:min-h-[310px] sm:rounded-[2rem]"
+          className="group flex h-full min-h-[238px] max-w-full flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-card/86 shadow-[0_24px_70px_-45px_rgba(0,0,0,0.85)] ring-1 ring-border/70 backdrop-blur-xl transition sm:min-h-[310px] sm:rounded-[2rem]"
         >
           {body}
         </Link>
       ) : (
-        <div className="group flex h-full min-h-[270px] flex-col overflow-hidden rounded-[1.65rem] border border-white/10 bg-card/86 shadow-[0_24px_70px_-45px_rgba(0,0,0,0.85)] ring-1 ring-border/70 backdrop-blur-xl transition sm:min-h-[310px] sm:rounded-[2rem]">
+        <div className="group flex h-full min-h-[238px] max-w-full flex-col overflow-hidden rounded-[1.35rem] border border-white/10 bg-card/86 shadow-[0_24px_70px_-45px_rgba(0,0,0,0.85)] ring-1 ring-border/70 backdrop-blur-xl transition sm:min-h-[310px] sm:rounded-[2rem]">
           {body}
         </div>
       )}

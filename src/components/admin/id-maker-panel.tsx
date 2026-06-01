@@ -16,12 +16,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
+import {
+  UsernameAvailabilityNote,
+  useUsernameAvailability,
+} from "@/components/profile/username-availability";
 import { cn } from "@/lib/utils";
 
 type MakerRole = "student" | "teacher";
 type AccountForm = {
   displayName: string;
   email: string;
+  username: string;
   phone: string;
   password: string;
 };
@@ -37,6 +42,7 @@ type IdMakerResult = {
 const emptyForm: AccountForm = {
   displayName: "",
   email: "",
+  username: "",
   phone: "",
   password: "",
 };
@@ -57,7 +63,8 @@ function parseBulkRows(text: string, role: MakerRole) {
         displayName: parts[0] ?? "",
         email: parts[1] ?? "",
         phone: parts[2] ?? "",
-        password: parts.slice(3).join("") || "",
+        password: parts[3] ?? "",
+        username: parts[4] ?? "",
       };
     });
 }
@@ -83,6 +90,9 @@ function RoleMakerSection({
   const [busy, setBusy] = useState<"single" | "bulk" | null>(null);
   const [results, setResults] = useState<IdMakerResult[]>([]);
   const Icon = role === "teacher" ? GraduationCap : UsersRound;
+  const usernameCheck = useUsernameAvailability(form.username, "new");
+  const usernameBlocked =
+    !usernameCheck.isAvailable || usernameCheck.isChecking;
   const accent =
     role === "teacher"
       ? "from-sky-500/18 via-primary/10 to-transparent"
@@ -103,6 +113,11 @@ function RoleMakerSection({
   ) {
     if (users.length === 0) {
       toast.error("No accounts found");
+      return;
+    }
+
+    if (mode === "single" && usernameBlocked) {
+      toast.error("Choose an available username first.");
       return;
     }
 
@@ -187,6 +202,18 @@ function RoleMakerSection({
             value={form.displayName}
             onChange={(event) => setField("displayName", event.target.value)}
           />
+          <label className="space-y-1.5">
+            <Input
+              required
+              placeholder="@username"
+              value={form.username}
+              onChange={(event) => setField("username", event.target.value)}
+            />
+            <UsernameAvailabilityNote
+              status={usernameCheck.status}
+              message={usernameCheck.message}
+            />
+          </label>
           <Input
             required
             type="email"
@@ -209,7 +236,7 @@ function RoleMakerSection({
           />
           <Button
             className="md:col-span-2"
-            disabled={busy !== null}
+            disabled={busy !== null || usernameBlocked}
             type="submit"
             variant="premium"
           >
@@ -227,7 +254,7 @@ function RoleMakerSection({
             <div>
               <p className="font-semibold">Bulk creator</p>
               <p className="text-xs text-muted-foreground">
-                One row: name, email, phone, password
+                One row: name, email, phone, password, username
               </p>
             </div>
             <Badge variant="secondary">
@@ -237,7 +264,7 @@ function RoleMakerSection({
           </div>
           <Textarea
             className="min-h-36"
-            placeholder={`Ahmed Malik, ahmed@example.com, 03001234567, pass1234\nZara Khan, zara@example.com, 03007654321, pass5678`}
+            placeholder={`Ahmed Malik, ahmed@example.com, 03001234567, pass1234, ahmed_bscs\nZara Khan, zara@example.com, 03007654321, pass5678, zara.dev`}
             value={bulkText}
             onChange={(event) => setBulkText(event.target.value)}
           />

@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { ArrowRight, Clock, KeyRound, ShieldCheck } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  KeyRound,
+  ShieldCheck,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,9 +57,13 @@ function dashboardPath(
   role: Role,
   onboardingCompleted: boolean,
   pendingApproval = false,
+  classId?: string | null,
 ) {
   if (role === "admin" || role === "super_admin") return "/admin";
   if (role === "teacher" && pendingApproval) return "/teacher";
+  if (role === "student" && onboardingCompleted && classId) {
+    return `/student/classes/${classId}`;
+  }
   if (!onboardingCompleted) return `/onboarding/${role}`;
   return `/${role}`;
 }
@@ -97,6 +107,12 @@ export function InviteAcceptanceCard({ token }: { token: string }) {
     email: "",
     password: "",
   });
+  const [accepted, setAccepted] = useState<{
+    role: Role;
+    className: string | null;
+    pendingApproval: boolean;
+    href: string;
+  } | null>(null);
 
   const isReady = useMemo(
     () => status === "pending" && invite,
@@ -167,6 +183,8 @@ export function InviteAcceptanceCard({ token }: { token: string }) {
         role?: Role;
         onboardingCompleted?: boolean;
         pendingApproval?: boolean;
+        joinedClassId?: string | null;
+        joinedClassName?: string | null;
         error?: string;
       };
 
@@ -187,14 +205,26 @@ export function InviteAcceptanceCard({ token }: { token: string }) {
       }
 
       window.localStorage.setItem("lumina.active.role", result.role);
-      toast.success("Workspace joined.");
-      router.replace(
-        dashboardPath(
-          result.role,
-          Boolean(result.onboardingCompleted),
-          Boolean(result.pendingApproval),
-        ),
+      const href = dashboardPath(
+        result.role,
+        Boolean(result.onboardingCompleted),
+        Boolean(result.pendingApproval),
+        result.joinedClassId,
       );
+      setAccepted({
+        role: result.role,
+        className: result.joinedClassName ?? invite?.className ?? null,
+        pendingApproval: Boolean(result.pendingApproval),
+        href,
+      });
+      toast.success(
+        result.pendingApproval
+          ? "Approval request sent."
+          : result.joinedClassName
+            ? "Class joined."
+            : "Workspace joined.",
+      );
+      window.setTimeout(() => router.replace(href), 1_200);
     } catch (caught) {
       toast.error("Invite acceptance failed", {
         description: inviteErrorMessage(caught),
@@ -223,6 +253,37 @@ export function InviteAcceptanceCard({ token }: { token: string }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5 p-6 pt-0 md:p-8 md:pt-0">
+        {accepted ? (
+          <div className="rounded-[2rem] border border-emerald-500/20 bg-emerald-500/10 p-5">
+            <div className="flex items-start gap-3">
+              <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-emerald-500 text-white">
+                <CheckCircle2 />
+              </div>
+              <div>
+                <p className="font-semibold">
+                  {accepted.pendingApproval
+                    ? "Request sent to the class owner"
+                    : accepted.className
+                      ? `You joined ${accepted.className}`
+                      : "Workspace joined"}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  {accepted.pendingApproval
+                    ? "You can sign in now. The classroom will appear after the owner approves your teacher access."
+                    : accepted.className
+                      ? "Your classroom is connected. EduPulse will take you to the right next step."
+                      : "EduPulse will take you to your dashboard."}
+                </p>
+                <Button asChild className="mt-4" size="sm">
+                  <a href={accepted.href}>
+                    Continue <ArrowRight />
+                  </a>
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-3xl border border-border bg-background/60 p-4">
             <p className="text-sm text-muted-foreground">Role</p>
@@ -270,7 +331,7 @@ export function InviteAcceptanceCard({ token }: { token: string }) {
           </div>
         )}
 
-        {isReady && (
+        {isReady && !accepted && (
           <form className="space-y-4" onSubmit={acceptInvite}>
             <Input
               required

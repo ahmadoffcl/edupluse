@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getCurrentAppSession } from "@/lib/auth/server";
+import type { AppSession } from "@/lib/auth/session";
 import { canManageTeacherOwnedRecord } from "@/lib/server/access-policy";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import type { Role } from "@/lib/types";
@@ -25,6 +26,111 @@ export function isTeacherRole(role: Role) {
   return role === "teacher" || role === "admin" || role === "super_admin";
 }
 
+function slugify(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+async function ensureSessionOrganization(
+  supabase: SupabaseService,
+  session: AppSession,
+) {
+  let result = await supabase.from("organizations").upsert(
+    {
+      id: session.orgId,
+      name: session.orgName,
+      slug: slugify(session.orgName) || "edupulse-academy-network",
+      tenant_type: "hybrid_institute",
+      status: "active",
+    },
+    { onConflict: "id" },
+  );
+
+  if (
+    result.error &&
+    (isMissingColumn(result.error, "slug") ||
+      isMissingColumn(result.error, "tenant_type") ||
+      isMissingColumn(result.error, "status"))
+  ) {
+    result = await supabase.from("organizations").upsert(
+      {
+        id: session.orgId,
+        name: session.orgName,
+      },
+      { onConflict: "id" },
+    );
+  }
+
+  if (result.error) throw result.error;
+}
+
+export async function ensureSessionProfile(
+  supabase: SupabaseService,
+  session: AppSession,
+) {
+  const existing = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("firebase_uid", session.uid)
+    .maybeSingle();
+
+  if (existing.error) throw existing.error;
+  if (existing.data?.id) return existing.data.id as string;
+
+  const canCreateLocalAdminProfile =
+    session.uid.startsWith("local-admin:") && isAdminRole(session.role);
+
+  if (!canCreateLocalAdminProfile) return null;
+
+  await ensureSessionOrganization(supabase, session);
+
+  const baseProfile = {
+    firebase_uid: session.uid,
+    email: session.email,
+    display_name: session.displayName || "EduPulse Admin",
+  };
+  let profileResult = await supabase
+    .from("profiles")
+    .upsert(
+      {
+        ...baseProfile,
+        onboarding_completed_at: new Date().toISOString(),
+      },
+      { onConflict: "firebase_uid" },
+    )
+    .select("id")
+    .single();
+
+  if (
+    profileResult.error &&
+    isMissingColumn(profileResult.error, "onboarding_completed_at")
+  ) {
+    profileResult = await supabase
+      .from("profiles")
+      .upsert(baseProfile, { onConflict: "firebase_uid" })
+      .select("id")
+      .single();
+  }
+
+  if (profileResult.error || !profileResult.data?.id) {
+    throw profileResult.error ?? new Error("Unable to prepare admin profile.");
+  }
+
+  const profileId = profileResult.data.id as string;
+  const { error: membershipError } = await supabase.from("memberships").upsert(
+    {
+      org_id: session.orgId,
+      profile_id: profileId,
+      role: session.role,
+      status: "active",
+    },
+    { onConflict: "org_id,profile_id,role" },
+  );
+
+  if (membershipError) throw membershipError;
+
+  return profileId;
+}
+
 export async function requireWorkflowContext(
   allowedRoles: readonly Role[],
   options: { profileRequired?: boolean } = {},
@@ -44,24 +150,21 @@ export async function requireWorkflowContext(
     return jsonError("Workspace data is unavailable.", 503);
   }
 
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("firebase_uid", session.uid)
-    .maybeSingle();
-
-  if (error) {
+  let profileId: string | null = null;
+  try {
+    profileId = await ensureSessionProfile(supabase, session);
+  } catch {
     return jsonError("Unable to load your profile.", 500);
   }
 
-  if (!profile?.id && options.profileRequired !== false) {
+  if (!profileId && options.profileRequired !== false) {
     return jsonError("Profile is not ready yet.", 404);
   }
 
   return {
     session,
     supabase,
-    profileId: (profile?.id as string | undefined) ?? null,
+    profileId,
   };
 }
 

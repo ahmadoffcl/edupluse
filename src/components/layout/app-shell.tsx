@@ -585,29 +585,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const unreadCount = notifications.filter((item) => !item.readAt).length;
   function navBadgeCount(href: string) {
-    const unread = notifications.filter((item) => !item.readAt);
-    const matches = (kinds: string[]) =>
-      unread.filter((item) => kinds.includes(item.kind)).length;
-
-    if (href.includes("/upcoming")) {
-      return matches([
-        "assignment_reminder",
-        "exam",
-        "exam_reminder",
-        "class_start_reminder",
-        "class_end_reminder",
-      ]);
-    }
-    if (href.includes("/assignments")) {
-      return matches(["assignment", "assignment_reminder", "submission"]);
-    }
-    if (href.includes("/messages")) {
-      return matches(["message", "announcement"]);
-    }
-    if (href.includes("/requests")) {
-      return matches(["class_join_request", "invite", "teacher_invite"]);
-    }
-    return 0;
+    return notifications.filter((item) => {
+      if (item.readAt || !item.actionUrl) return false;
+      return item.actionUrl === href || item.actionUrl.startsWith(`${href}/`);
+    }).length;
   }
   const currentRole = user?.role ?? "student";
   const mobilePriority = useMemo(() => {

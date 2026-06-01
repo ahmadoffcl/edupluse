@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentAppSession } from "@/lib/auth/server";
+import { getFirebaseAdminAuth } from "@/lib/firebase/admin";
+import { ensureSessionProfile } from "@/lib/server/workflow-auth";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import type { Role } from "@/lib/types";
 
@@ -13,6 +15,29 @@ const schema = z.object({
 
 function isAdminRole(role: Role) {
   return role === "admin" || role === "super_admin";
+}
+
+function isMissingRelation(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; message?: string };
+
+  return (
+    candidate.code === "42P01" ||
+    candidate.code === "PGRST205" ||
+    Boolean(
+      candidate.message?.includes("schema cache") ||
+        candidate.message?.includes("does not exist"),
+    )
+  );
+}
+
+async function safeDelete(
+  query: PromiseLike<{ error: unknown | null }>,
+): Promise<void> {
+  const result = await query;
+  if (result.error && !isMissingRelation(result.error)) {
+    throw result.error;
+  }
 }
 
 export async function PATCH(
@@ -77,15 +102,13 @@ export async function PATCH(
     );
   }
 
-  const { data: actorProfile } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("firebase_uid", session.uid)
-    .maybeSingle();
+  const actorProfileId = await ensureSessionProfile(supabase, session).catch(
+    () => null,
+  );
 
   await supabase.from("audit_logs").insert({
     org_id: session.orgId,
-    actor_id: actorProfile?.id ?? null,
+    actor_id: actorProfileId,
     action: "admin.user.updated",
     entity: "memberships",
     entity_id: targetMembership.id,
@@ -120,7 +143,7 @@ export async function DELETE(
   const { membershipId } = await context.params;
   const { data: targetMembership, error: targetError } = await supabase
     .from("memberships")
-    .select("id,profile_id,role")
+    .select("id,profile_id,role,profiles!memberships_profile_id_fkey(firebase_uid)")
     .eq("org_id", session.orgId)
     .eq("id", membershipId)
     .maybeSingle();
@@ -129,10 +152,65 @@ export async function DELETE(
     return NextResponse.json({ error: "User not found." }, { status: 404 });
   }
 
+  const actorProfileId = await ensureSessionProfile(supabase, session).catch(
+    () => null,
+  );
+  const targetProfileId = targetMembership.profile_id as string;
+
+  if (actorProfileId && targetProfileId === actorProfileId) {
+    return NextResponse.json(
+      { error: "You cannot remove your own admin account." },
+      { status: 400 },
+    );
+  }
+
+  await safeDelete(
+    supabase
+      .from("enrollments")
+      .delete()
+      .eq("org_id", session.orgId)
+      .eq("student_id", targetProfileId),
+  );
+  await safeDelete(
+    supabase
+      .from("class_join_requests")
+      .delete()
+      .eq("org_id", session.orgId)
+      .eq("student_id", targetProfileId),
+  );
+  await safeDelete(
+    supabase
+      .from("class_teachers")
+      .delete()
+      .eq("org_id", session.orgId)
+      .eq("teacher_id", targetProfileId),
+  );
+  await safeDelete(
+    supabase
+      .from("push_subscriptions")
+      .delete()
+      .eq("org_id", session.orgId)
+      .eq("profile_id", targetProfileId),
+  );
+  await safeDelete(
+    supabase
+      .from("notifications")
+      .delete()
+      .eq("org_id", session.orgId)
+      .eq("recipient_id", targetProfileId),
+  );
+  await safeDelete(
+    supabase
+      .from("device_sessions")
+      .delete()
+      .eq("org_id", session.orgId)
+      .eq("profile_id", targetProfileId),
+  );
+
   const { error } = await supabase
     .from("memberships")
     .delete()
-    .eq("id", membershipId)
+    .eq("profile_id", targetProfileId)
     .eq("org_id", session.orgId);
 
   if (error) {
@@ -142,15 +220,42 @@ export async function DELETE(
     );
   }
 
+  const profileRelation = Array.isArray(targetMembership.profiles)
+    ? targetMembership.profiles[0]
+    : targetMembership.profiles;
+  const firebaseUid =
+    profileRelation && typeof profileRelation.firebase_uid === "string"
+      ? profileRelation.firebase_uid
+      : null;
+
+  if (firebaseUid && !firebaseUid.startsWith("local-admin:")) {
+    await getFirebaseAdminAuth()
+      ?.deleteUser(firebaseUid)
+      .catch((error) => {
+        if (
+          typeof error === "object" &&
+          error &&
+          (error as { code?: string }).code === "auth/user-not-found"
+        ) {
+          return;
+        }
+        console.warn(
+          "Firebase user removal skipped",
+          error instanceof Error ? error.message : "unknown",
+        );
+      });
+  }
+
   await supabase.from("audit_logs").insert({
     org_id: session.orgId,
-    actor_id: null,
+    actor_id: actorProfileId,
     action: "admin.user.removed",
     entity: "memberships",
     entity_id: targetMembership.id,
     metadata: {
-      profileId: targetMembership.profile_id,
+      profileId: targetProfileId,
       role: targetMembership.role,
+      firebaseUserDeleted: Boolean(firebaseUid),
     },
   });
 
