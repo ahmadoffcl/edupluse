@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandLogo } from "@/components/brand/brand-logo";
+import { ClassroomHomeFrame } from "@/components/dashboard/classroom-home-frame";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -640,9 +641,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const classroomHomeRoute =
-    (pathname === "/student" && user.role === "student") ||
-    (pathname === "/teacher" && user.role === "teacher");
+  const studentClassroomRoute =
+    user.role === "student" &&
+    (pathname === "/student" || pathname.startsWith("/student/"));
+  const classroomHomeRoute = pathname === "/teacher" && user.role === "teacher";
+
+  if (studentClassroomRoute) {
+    return (
+      <ClassroomHomeFrame
+        role="student"
+        currentPath={pathname}
+        userName={user.displayName}
+        userPhotoUrl={user.photoURL}
+        className="bg-white p-4 sm:p-6"
+      >
+        {routePending ? <ClassroomRouteSkeleton /> : children}
+      </ClassroomHomeFrame>
+    );
+  }
 
   if (classroomHomeRoute) {
     return <>{children}</>;
@@ -1316,6 +1332,23 @@ function RouteSkeleton() {
           </div>
           <div className="hidden h-80 rounded-[1.5rem] bg-muted xl:block" />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ClassroomRouteSkeleton() {
+  return (
+    <div className="mx-auto max-w-6xl animate-pulse space-y-5">
+      <div className="h-8 w-44 rounded-full bg-[#e8eaed]" />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {[0, 1, 2].map((item) => (
+          <div key={item} className="h-44 rounded-2xl bg-[#eef1f5]" />
+        ))}
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
+        <div className="h-72 rounded-2xl bg-[#eef1f5]" />
+        <div className="h-72 rounded-2xl bg-[#eef1f5]" />
       </div>
     </div>
   );

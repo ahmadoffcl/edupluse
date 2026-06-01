@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import {
   Archive,
@@ -19,6 +21,7 @@ export function ClassroomHomeFrame({
   userName = "S",
   userPhotoUrl,
   topAction,
+  currentPath,
 }: {
   children: ReactNode;
   className?: string;
@@ -26,6 +29,7 @@ export function ClassroomHomeFrame({
   userName?: string | null;
   userPhotoUrl?: string | null;
   topAction?: ReactNode;
+  currentPath?: string;
 }) {
   const homeHref = role === "teacher" ? "/teacher" : "/student";
   const calendarHref =
@@ -35,9 +39,41 @@ export function ClassroomHomeFrame({
   const classesHref =
     role === "teacher" ? "/teacher/classes" : "/student/classes";
   const initial = (userName || "S").trim().charAt(0).toUpperCase() || "S";
+  const activePath = currentPath ?? homeHref;
+  const navItems: Array<{
+    href: string;
+    label: string;
+    icon: ReactNode;
+    matchPath?: string;
+  }> = [
+    { href: homeHref, label: "Home", icon: <Home /> },
+    { href: calendarHref, label: "Calendar", icon: <CalendarDays /> },
+    {
+      href: `${classesHref}?filter=archived`,
+      label: "Archived classes",
+      icon: <Archive />,
+    },
+    { href: settingsHref, label: "Settings", icon: <Settings /> },
+  ];
+  const lightScope = {
+    "--background": "#ffffff",
+    "--foreground": "#202124",
+    "--card": "#ffffff",
+    "--card-foreground": "#202124",
+    "--popover": "#ffffff",
+    "--popover-foreground": "#202124",
+    "--muted": "#f1f3f4",
+    "--muted-foreground": "#5f6368",
+    "--border": "#dadce0",
+    "--primary": "#0b57d0",
+    "--primary-foreground": "#ffffff",
+  } as CSSProperties;
 
   return (
-    <section className="fixed inset-0 z-[200] overflow-hidden bg-white text-[#202124] antialiased dark:bg-white dark:text-[#202124]">
+    <section
+      className="fixed inset-0 z-[200] overflow-hidden bg-white text-[#202124] antialiased dark:bg-white dark:text-[#202124]"
+      style={lightScope}
+    >
       <header className="fixed inset-x-0 top-0 z-20 flex h-16 items-center border-b border-[#e8eaed] bg-white px-5">
         <button
           type="button"
@@ -83,18 +119,25 @@ export function ClassroomHomeFrame({
 
       <aside className="fixed bottom-0 left-0 top-16 z-10 w-[76px] border-r border-transparent bg-[#f8fafd] pt-3 md:w-[300px]">
         <nav className="space-y-4 px-3">
-          <ClassroomNavItem active href={homeHref} icon={<Home />}>
-            Home
-          </ClassroomNavItem>
-          <ClassroomNavItem href={calendarHref} icon={<CalendarDays />}>
-            Calendar
-          </ClassroomNavItem>
-          <ClassroomNavItem href={`${classesHref}?filter=archived`} icon={<Archive />}>
-            Archived classes
-          </ClassroomNavItem>
-          <ClassroomNavItem href={settingsHref} icon={<Settings />}>
-            Settings
-          </ClassroomNavItem>
+          {navItems.map((item) => {
+            const matchPath = item.matchPath ?? item.href;
+            const active =
+              matchPath === homeHref
+                ? activePath === homeHref
+                : activePath === matchPath ||
+                  activePath.startsWith(`${matchPath}/`);
+
+            return (
+              <ClassroomNavItem
+                key={item.href}
+                active={active}
+                href={item.href}
+                icon={item.icon}
+              >
+                {item.label}
+              </ClassroomNavItem>
+            );
+          })}
         </nav>
       </aside>
 
@@ -125,6 +168,7 @@ export function ClassroomEmptyHome({
   userName,
   userPhotoUrl,
   topAction,
+  currentPath,
 }: {
   title?: string;
   children: ReactNode;
@@ -132,6 +176,7 @@ export function ClassroomEmptyHome({
   userName?: string | null;
   userPhotoUrl?: string | null;
   topAction?: ReactNode;
+  currentPath?: string;
 }) {
   return (
     <ClassroomHomeFrame
@@ -139,6 +184,7 @@ export function ClassroomEmptyHome({
       topAction={topAction}
       userName={userName}
       userPhotoUrl={userPhotoUrl}
+      currentPath={currentPath}
     >
       <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center px-5 py-12 text-center">
         <img
